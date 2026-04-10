@@ -1,7 +1,9 @@
-﻿import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../components/layout/AdminLayout'
 import Icon from '../components/Icon'
 import { roomGallery, topbarAvatars } from '../data/dashboardData'
+import { api } from '../../../api/client'
 
 const amenityOptions = [
   { id: 'wifi', title: 'High-speed Wi-Fi', subtitle: 'Fiber Optic' },
@@ -21,6 +23,8 @@ const initialAmenities = {
   cleaning: false,
 }
 
+const typeOptions = ['Single Room', 'Double Room', 'Shared (4 Bed)', 'Studio Suite', 'Premium Studio']
+
 function FormSection({ title, icon, children }) {
   return (
     <section className="rounded-xl border border-outline-variant/15 bg-surface-container-lowest p-8 shadow-sm">
@@ -38,22 +42,108 @@ function Label({ children }) {
 }
 
 function AddRoomPage() {
+  const navigate = useNavigate()
+  const [dorms, setDorms] = useState([])
+  const [loadingDorms, setLoadingDorms] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
   const [seatCount, setSeatCount] = useState(1)
   const [price, setPrice] = useState('15000')
   const [roomNumber, setRoomNumber] = useState('')
   const [floorLevel, setFloorLevel] = useState('2nd Floor')
-  const [roomType, setRoomType] = useState('Single Suite')
-  const [building, setBuilding] = useState('The Regent Tower')
+  const [roomType, setRoomType] = useState('Single Room')
+  const [building, setBuilding] = useState('')
   const [amenities, setAmenities] = useState(initialAmenities)
   const [uploadedName, setUploadedName] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
+
+  useEffect(() => {
+    async function loadDorms() {
+      setLoadingDorms(true)
+      setError('')
+
+      try {
+        const { data } = await api.get('/dorms')
+        const records = data.dorms || []
+        setDorms(records)
+        if (records[0]) {
+          setBuilding(records[0]._id)
+        }
+      } catch (requestError) {
+        setError(requestError.response?.data?.message || 'Failed to load dorm list.')
+      } finally {
+        setLoadingDorms(false)
+      }
+    }
+
+    loadDorms()
+  }, [])
 
   const selectedAmenities = useMemo(
     () => amenityOptions.filter((item) => amenities[item.id]).map((item) => item.title),
     [amenities],
   )
 
+  const selectedBuildingName = useMemo(() => {
+    const dorm = dorms.find((item) => item._id === building)
+    return dorm ? `${dorm.name} (${dorm.block})` : 'Not selected'
+  }, [building, dorms])
+
   const toggleAmenity = (id) => {
     setAmenities((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const handleCreateRoom = async () => {
+    setMessage('')
+    setError('')
+
+    if (!building) {
+      setError('Select a dorm before creating a room.')
+      return
+    }
+
+    if (!roomNumber.trim()) {
+      setError('Room number is required.')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      await api.post('/rooms', {
+        dorm: building,
+        roomNumber: roomNumber.trim(),
+        floor: floorLevel,
+        type: roomType,
+        seatCount: Math.max(1, Number(seatCount || 1)),
+        occupiedSeats: 0,
+        priceMonthly: Math.max(0, Number(price || 0)),
+        amenities: selectedAmenities,
+        images: imageUrl.trim() ? [imageUrl.trim()] : [],
+      })
+
+      setMessage('Room created successfully. Redirecting...')
+      setTimeout(() => navigate('/admin/availability'), 500)
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to create room.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resetForm = () => {
+    setSeatCount(1)
+    setPrice('15000')
+    setRoomNumber('')
+    setFloorLevel('2nd Floor')
+    setRoomType('Single Room')
+    setAmenities(initialAmenities)
+    setUploadedName('')
+    setImageUrl('')
+    setMessage('')
+    setError('')
   }
 
   return (
@@ -81,6 +171,8 @@ function AddRoomPage() {
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-on-surface">Create Sanctuary Space</h1>
           <p className="mt-2 text-lg text-secondary">Define a new premium living environment for students.</p>
+          {error ? <p className="mt-3 text-sm font-semibold text-error">{error}</p> : null}
+          {message ? <p className="mt-3 text-sm font-semibold text-primary">{message}</p> : null}
         </div>
 
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
@@ -94,10 +186,13 @@ function AddRoomPage() {
                     onChange={(e) => setBuilding(e.target.value)}
                     className="rounded-lg border-none bg-surface-container-high px-4 py-3 focus:ring-2 focus:ring-primary"
                   >
-                    <option>The Regent Tower</option>
-                    <option>Emerald Suites</option>
-                    <option>Liberty Hall</option>
-                    <option>Atelier North</option>
+                    {loadingDorms ? <option>Loading dorms...</option> : null}
+                    {!loadingDorms && dorms.length === 0 ? <option value="">No dorms available</option> : null}
+                    {dorms.map((dorm) => (
+                      <option key={dorm._id} value={dorm._id}>
+                        {dorm.name} ({dorm.block})
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -131,10 +226,9 @@ function AddRoomPage() {
                     onChange={(e) => setRoomType(e.target.value)}
                     className="rounded-lg border-none bg-surface-container-high px-4 py-3 focus:ring-2 focus:ring-primary"
                   >
-                    <option>Single Suite</option>
-                    <option>Double (Twin)</option>
-                    <option>Shared (Quad)</option>
-                    <option>Studio Apartment</option>
+                    {typeOptions.map((option) => (
+                      <option key={option}>{option}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -156,7 +250,7 @@ function AddRoomPage() {
                       type="number"
                       min="1"
                       value={seatCount}
-                      onChange={(e) => setSeatCount(Number(e.target.value) || 1)}
+                      onChange={(e) => setSeatCount(Math.max(1, Number(e.target.value) || 1))}
                       className="w-full border-none bg-transparent py-3 text-center focus:ring-0"
                     />
                     <button
@@ -217,13 +311,26 @@ function AddRoomPage() {
                 <input
                   type="file"
                   className="hidden"
-                  onChange={(e) => setUploadedName(e.target.files?.[0]?.name || '')}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    setUploadedName(file?.name || '')
+                  }}
                 />
               </label>
 
+              <div className="mt-4">
+                <label className="text-xs font-bold uppercase tracking-wider text-secondary">Image URL (Optional)</label>
+                <input
+                  value={imageUrl}
+                  onChange={(event) => setImageUrl(event.target.value)}
+                  placeholder="https://example.com/room.jpg"
+                  className="mt-2 w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <div className="aspect-square overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-high">
-                  <img src={roomGallery[0]} alt="Room preview" className="h-full w-full object-cover" />
+                  <img src={imageUrl || roomGallery[0]} alt="Room preview" className="h-full w-full object-cover" />
                 </div>
                 <div className="flex aspect-square items-center justify-center rounded-lg bg-surface-container-high">
                   <Icon name="add" className="text-secondary text-sm" />
@@ -240,7 +347,7 @@ function AddRoomPage() {
                   <p className="text-xs font-bold uppercase tracking-widest text-secondary">Live Summary</p>
                   <div className="mt-3 space-y-2 text-sm text-on-surface">
                     <p>
-                      <span className="font-semibold">Building:</span> {building}
+                      <span className="font-semibold">Building:</span> {selectedBuildingName}
                     </p>
                     <p>
                       <span className="font-semibold">Room:</span> {roomNumber || 'Not set yet'}
@@ -272,10 +379,10 @@ function AddRoomPage() {
                   </div>
                 </div>
 
-                <button className="w-full rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02]">
-                  Create Room
+                <button type="button" onClick={handleCreateRoom} disabled={saving || loadingDorms} className="w-full rounded-xl bg-gradient-to-br from-primary to-primary-container py-4 font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60">
+                  {saving ? 'Creating...' : 'Create Room'}
                 </button>
-                <button className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-lowest py-4 font-semibold text-on-surface transition-all hover:bg-surface-container-low">
+                <button type="button" onClick={resetForm} className="w-full rounded-xl border border-outline-variant/30 bg-surface-container-lowest py-4 font-semibold text-on-surface transition-all hover:bg-surface-container-low">
                   Discard
                 </button>
 
@@ -300,5 +407,3 @@ function AddRoomPage() {
 }
 
 export default AddRoomPage
-
-

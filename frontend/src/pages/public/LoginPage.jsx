@@ -28,8 +28,18 @@ function LoginPage() {
 
     try {
       const loggedInUser = await login(form)
-      const fromPath = location.state?.from?.pathname
-      const target = fromPath || (loggedInUser.role === 'admin' ? '/admin' : '/student')
+      const roleHome = loggedInUser.role === 'admin' ? '/admin' : '/student'
+      const fromPath = typeof location.state?.from?.pathname === 'string' ? location.state.from.pathname : ''
+
+      let target = roleHome
+      if (fromPath.startsWith('/')) {
+        if (loggedInUser.role === 'admin') {
+          target = fromPath.startsWith('/admin') ? fromPath : roleHome
+        } else {
+          target = fromPath.startsWith('/student') || fromPath === '/apply-now' ? fromPath : roleHome
+        }
+      }
+
       navigate(target, { replace: true })
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Login failed')

@@ -1,9 +1,93 @@
-import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import DormCard from '../components/DormCard'
 import PageShell from '../components/PageShell'
-import { featuredDorms } from '../data/dormData'
+import { browseDorms, featuredDorms } from '../data/dormData'
+
+const QUICK_FILTERS = [
+  { key: 'building', icon: 'apartment', label: 'Building' },
+  { key: 'budget', icon: 'payments', label: 'Budget' },
+  { key: 'roomType', icon: 'hotel', label: 'Room Type' },
+  { key: 'amenities', icon: 'local_laundry_service', label: 'Amenities' },
+]
+
+const HOME_BUDGET_CAP = 8000
+
+function priceToNumber(price) {
+  const numeric = String(price || '').replace(/[^\d]/g, '')
+  return numeric ? Number(numeric) : 0
+}
 
 function Home() {
+  const navigate = useNavigate()
+  const [locationQuery, setLocationQuery] = useState('')
+  const [selectedRoomType, setSelectedRoomType] = useState('All Room Types')
+  const [activeQuickFilters, setActiveQuickFilters] = useState({
+    building: false,
+    budget: false,
+    roomType: false,
+    amenities: false,
+  })
+
+  const roomTypeOptions = useMemo(
+    () => ['All Room Types', ...new Set(browseDorms.map((dorm) => dorm.type))],
+    [],
+  )
+
+  const effectiveRoomType = useMemo(() => {
+    if (selectedRoomType !== 'All Room Types') return selectedRoomType
+    if (activeQuickFilters.roomType) return 'Single Room'
+    return ''
+  }, [selectedRoomType, activeQuickFilters.roomType])
+
+  const filteredDorms = useMemo(() => {
+    const query = locationQuery.trim().toLowerCase()
+
+    return featuredDorms.filter((dorm) => {
+      const searchableText = `${dorm.location || ''} ${dorm.block || ''} ${dorm.name || ''}`.toLowerCase()
+      const matchesLocation = query === '' || searchableText.includes(query)
+      const matchesRoomType = !effectiveRoomType || dorm.type === effectiveRoomType
+      const matchesBuilding = !activeQuickFilters.building || String(dorm.block || '').toLowerCase().includes('block')
+      const matchesBudget = !activeQuickFilters.budget || priceToNumber(dorm.price) <= HOME_BUDGET_CAP
+      const matchesAmenities = !activeQuickFilters.amenities || (dorm.amenities || []).includes('Laundry')
+
+      return (
+        matchesLocation &&
+        matchesRoomType &&
+        matchesBuilding &&
+        matchesBudget &&
+        matchesAmenities
+      )
+    })
+  }, [locationQuery, effectiveRoomType, activeQuickFilters])
+
+  const toggleQuickFilter = (key) => {
+    setActiveQuickFilters((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
+
+  const goToBrowseWithFilters = () => {
+    const params = new URLSearchParams()
+    const query = locationQuery.trim()
+    if (query) params.set('q', query)
+    if (effectiveRoomType) params.set('roomType', effectiveRoomType)
+
+    if (activeQuickFilters.building) {
+      params.set('blocks', 'Block A (North),Block B (South)')
+    }
+    if (activeQuickFilters.budget) {
+      params.set('maxBudget', String(HOME_BUDGET_CAP))
+    }
+    if (activeQuickFilters.amenities) {
+      params.set('amenities', 'Laundry')
+    }
+
+    const queryString = params.toString()
+    navigate(queryString ? `/browse-dorms?${queryString}` : '/browse-dorms')
+  }
+
   return (
     <PageShell buttonLabel="Login" buttonTo="/login">
       <main className="pt-24">
@@ -31,19 +115,37 @@ function Home() {
                 <div className="flex flex-col md:flex-row md:items-center">
                   <div className="flex-1 border-outline-variant/20 px-6 py-3 md:border-r">
                     <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-secondary">Location</label>
-                    <input type="text" placeholder="Which campus?" className="w-full border-none bg-transparent p-0 text-on-surface placeholder:text-outline-variant focus:ring-0" />
+                    <input
+                      type="text"
+                      value={locationQuery}
+                      onChange={(event) => setLocationQuery(event.target.value)}
+                      placeholder="Which campus?"
+                      className="w-full border-none bg-transparent p-0 text-on-surface placeholder:text-outline-variant focus:ring-0"
+                    />
                   </div>
                   <div className="flex-1 px-6 py-3">
                     <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-secondary">Room Type</label>
-                    <select className="w-full appearance-none border-none bg-transparent p-0 text-on-surface focus:ring-0">
-                      <option>Studio Suite</option>
-                      <option>Shared Apartment</option>
-                      <option>Single Room</option>
+                    <select
+                      value={selectedRoomType}
+                      onChange={(event) => setSelectedRoomType(event.target.value)}
+                      className="w-full appearance-none border-none bg-transparent p-0 text-on-surface focus:ring-0"
+                    >
+                      {roomTypeOptions.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
                     </select>
                   </div>
-                  <Link to="/browse-dorms" className="m-1 flex aspect-square items-center justify-center rounded-lg bg-primary p-4 text-white transition hover:bg-primary-container">
+                  <button
+                    type="button"
+                    onClick={goToBrowseWithFilters}
+                    className="m-1 flex aspect-square items-center justify-center rounded-lg bg-primary p-4 text-white transition hover:bg-primary-container"
+                    aria-label="Search Dorms"
+                    title="Search Dorms"
+                  >
                     <span className="material-symbols-outlined">search</span>
-                  </Link>
+                  </button>
                 </div>
               </div>
             </div>
@@ -51,8 +153,8 @@ function Home() {
             <div className="relative min-h-[500px] lg:col-span-6">
               <div className="absolute inset-0 -rotate-3 scale-105 rounded-[2rem] bg-secondary-container/20" />
               <img
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuCnOSsm-JxpT10RUimKpQjLL1dFCRJx4KCPdMPuxQeQy43MNc7rTzqLB2m-ZirussIAkpW49lAnx779dmJ-HJn8nvdsRhOjZNVZofUvX80tZWIbWxiFqgnVA14RZ6f08-IHodei-oAOxxC2PXsas0OuP49X2QGl3DdkKZRU_n5gZXesCpUygyR4QJRFCQkGKs886MiDsZu0ERAbaytA9QHzbzZhnUzt5oqSRHbzwVM1Q__ou1ztCxvynKCIjGEleHRbF7inYSdCTd8K"
-                alt="Modern student lounge"
+                src="https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?auto=format&fit=crop&w=1600&q=80"
+                alt="Modern dorm interior"
                 className="relative h-[600px] w-full rounded-[2rem] object-cover shadow-2xl transition duration-700 hover:grayscale-0 lg:h-[600px]"
               />
               <div className="absolute -bottom-8 -left-2 z-20 max-w-[220px] rounded-2xl bg-surface-container-lowest p-6 shadow-xl md:-left-8">
@@ -67,17 +169,24 @@ function Home() {
           <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-center gap-8 px-6 md:px-12">
             <span className="text-sm font-bold uppercase tracking-widest text-secondary">Quick Filters</span>
             <div className="flex flex-wrap gap-3">
-              {[
-                ['apartment', 'Building'],
-                ['payments', 'Budget'],
-                ['hotel', 'Room Type'],
-                ['wifi', 'Amenities'],
-              ].map(([icon, label]) => (
-                <button key={label} className="glass-chip flex items-center gap-2 rounded-full bg-secondary-container/40 px-5 py-2 text-sm font-semibold text-on-secondary-container transition hover:bg-secondary-container">
-                  <span className="material-symbols-outlined text-[18px]">{icon}</span>
-                  {label}
-                </button>
-              ))}
+              {QUICK_FILTERS.map((filter) => {
+                const active = activeQuickFilters[filter.key]
+                return (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    onClick={() => toggleQuickFilter(filter.key)}
+                    className={`glass-chip flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold transition ${
+                      active
+                        ? 'bg-primary text-white'
+                        : 'bg-secondary-container/40 text-on-secondary-container hover:bg-secondary-container'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">{filter.icon}</span>
+                    {filter.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
         </section>
@@ -88,17 +197,29 @@ function Home() {
               <h2 className="mb-4 text-4xl font-bold tracking-tight">Curated Residences</h2>
               <p className="max-w-md text-secondary">Hand-picked living spaces that prioritize your academic success and comfort.</p>
             </div>
-            <Link to="/browse-dorms" className="group flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-primary">
-              Explore All Residences
-              <span className="material-symbols-outlined transition group-hover:translate-x-1">arrow_forward</span>
-            </Link>
+            <div className="text-right">
+              <p className="text-sm font-bold uppercase tracking-widest text-secondary">
+                Showing {filteredDorms.length} match{filteredDorms.length === 1 ? '' : 'es'}
+              </p>
+              <button type="button" onClick={goToBrowseWithFilters} className="group mt-2 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-primary md:ml-auto">
+                Search In Browse
+                <span className="material-symbols-outlined transition group-hover:translate-x-1">arrow_forward</span>
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-3">
-            {featuredDorms.map((dorm) => (
-              <DormCard key={dorm.id} dorm={dorm} />
-            ))}
-          </div>
+          {filteredDorms.length === 0 ? (
+            <div className="rounded-2xl bg-surface-container-low px-6 py-12 text-center">
+              <h3 className="text-xl font-bold text-on-surface">No dorms match your current filters</h3>
+              <p className="mt-3 text-secondary">Adjust location, room type, or quick filters and try again.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-3">
+              {filteredDorms.map((dorm) => (
+                <DormCard key={dorm.id} dorm={dorm} />
+              ))}
+            </div>
+          )}
         </section>
       </main>
     </PageShell>

@@ -1,5 +1,6 @@
 import { Review } from '../models/Review.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
+import { ApiError } from '../utils/apiError.js'
 
 export const listReviews = asyncHandler(async (req, res) => {
   const { dormId } = req.query
@@ -49,6 +50,10 @@ export const updateReviewStatus = asyncHandler(async (req, res) => {
     { status },
     { new: true, runValidators: true },
   ).populate(['student', 'dorm', 'room'])
+
+  if (!review) {
+    throw new ApiError(404, 'Review not found')
+  }
 
   res.json({ success: true, message: 'Review status updated', review })
 })

@@ -35,13 +35,6 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "Dorm Door backend is running",
-  });
-});
-
 app.use('/api/auth', authRoutes)
 app.use('/api/dorms', dormRoutes)
 app.use('/api/rooms', roomRoutes)

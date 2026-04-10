@@ -12,15 +12,15 @@ import AddDormPage from './pages/AddDormPage'
 function AdminPortal() {
   return (
     <Routes>
-      <Route path="/admin" element={<OverviewPage />} />
-      <Route path="/admin/dorms" element={<DormsPage />} />
-      <Route path="/admin/dorms/add" element={<AddDormPage />} />
-      <Route path="/admin/rooms/add" element={<AddRoomPage />} />
-      <Route path="/admin/applications" element={<ApplicationsPage />} />
-      <Route path="/admin/documents" element={<DocumentsPage />} />
-      <Route path="/admin/availability" element={<AvailabilityPage />} />
-      <Route path="/admin/support" element={<SupportPage />} />
-      <Route path="/admin/settings" element={<SettingsPage />} />
+      <Route index element={<OverviewPage />} />
+      <Route path="dorms" element={<DormsPage />} />
+      <Route path="dorms/add" element={<AddDormPage />} />
+      <Route path="rooms/add" element={<AddRoomPage />} />
+      <Route path="applications" element={<ApplicationsPage />} />
+      <Route path="documents" element={<DocumentsPage />} />
+      <Route path="availability" element={<AvailabilityPage />} />
+      <Route path="support" element={<SupportPage />} />
+      <Route path="settings" element={<SettingsPage />} />
       <Route path="*" element={<Navigate to="/admin" replace />} />
     </Routes>
   )

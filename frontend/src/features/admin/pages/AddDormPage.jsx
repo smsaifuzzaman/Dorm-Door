@@ -1,15 +1,86 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
 import Icon from '../components/Icon'
+import { api } from '../../../api/client'
 
 const facilitiesList = ['High-speed Wi-Fi', 'Air Conditioning', '24/7 Security', 'Laundry Service', 'Cafeteria / Dining', 'Study & Fitness Center']
 
 function AddDormPage() {
+  const navigate = useNavigate()
   const [selected, setSelected] = useState(['High-speed Wi-Fi', '24/7 Security'])
+  const [images, setImages] = useState([])
+  const [form, setForm] = useState({
+    name: '',
+    block: '',
+    totalFloors: '',
+    totalCapacity: '',
+    address: '',
+    description: '',
+    rules: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
 
   const toggleFacility = (facility) => {
     setSelected((prev) => (prev.includes(facility) ? prev.filter((item) => item !== facility) : [...prev, facility]))
+  }
+
+  const updateField = (field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const addCustomAmenity = () => {
+    const custom = window.prompt('Enter custom amenity name')
+    if (!custom) return
+    const trimmed = custom.trim()
+    if (!trimmed) return
+    if (!selected.includes(trimmed)) {
+      setSelected((prev) => [...prev, trimmed])
+    }
+  }
+
+  const addImageUrl = () => {
+    const nextUrl = window.prompt('Paste image URL for this dorm')
+    if (!nextUrl) return
+    const trimmed = nextUrl.trim()
+    if (!trimmed) return
+    setImages((prev) => [...prev, trimmed].slice(0, 6))
+  }
+
+  const handleSave = async () => {
+    setMessage('')
+    setError('')
+
+    if (!form.name.trim() || !form.block.trim() || !form.address.trim()) {
+      setError('Dorm name, block, and address are required.')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      await api.post('/dorms', {
+        name: form.name.trim(),
+        block: form.block.trim(),
+        address: form.address.trim(),
+        description: form.description.trim(),
+        rules: form.rules.trim(),
+        facilities: selected,
+        images,
+        totalFloors: Number(form.totalFloors || 1),
+        totalCapacity: Number(form.totalCapacity || 0),
+        status: 'active',
+      })
+      setMessage('Dorm created successfully. Redirecting...')
+      setTimeout(() => navigate('/admin/dorms'), 500)
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to create dorm.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -31,10 +102,14 @@ function AddDormPage() {
             <p className="text-secondary">Dormitories <span className="mx-2">{'>'}</span> <span className="font-semibold text-primary">Add New Dormitory</span></p>
             <h1 className="mt-3 text-5xl font-black tracking-tighter">Expand the Sanctuary</h1>
             <p className="mt-2 text-[18px] text-secondary">Define a new living space for our academic community.</p>
+            {error ? <p className="mt-3 text-sm font-semibold text-error">{error}</p> : null}
+            {message ? <p className="mt-3 text-sm font-semibold text-primary">{message}</p> : null}
           </div>
           <div className="flex items-center gap-5">
-            <button className="text-xl text-secondary">Cancel</button>
-            <button className="rounded-xl bg-primary px-8 py-4 text-xl font-bold text-white shadow-soft">Save Dormitory</button>
+            <button type="button" onClick={() => navigate('/admin/dorms')} className="text-xl text-secondary">Cancel</button>
+            <button type="button" onClick={handleSave} disabled={saving} className="rounded-xl bg-primary px-8 py-4 text-xl font-bold text-white shadow-soft disabled:cursor-not-allowed disabled:opacity-70">
+              {saving ? 'Saving...' : 'Save Dormitory'}
+            </button>
           </div>
         </div>
 
@@ -43,18 +118,19 @@ function AddDormPage() {
             <section className="rounded-2xl border border-[#ece7e4] bg-white p-8">
               <h3 className="mb-8 flex items-center gap-3 text-2xl font-extrabold"><span className="rounded-full bg-blue-50 p-3 text-primary"><Icon name="segment" /></span> General Details</h3>
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Dorm Name</label><input className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="e.g. Sterling Hall" /></div>
-                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Block / Building</label><input className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="e.g. North Wing - Block A" /></div>
-                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Total Floor Count</label><input className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="0" /></div>
-                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Total Room Capacity</label><input className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="0" /></div>
-                <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Address</label><textarea className="mt-2 min-h-[120px] w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="Enter the full street address and campus proximity details..." /></div>
+                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Dorm Name</label><input value={form.name} onChange={(event) => updateField('name', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="e.g. Sterling Hall" /></div>
+                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Block / Building</label><input value={form.block} onChange={(event) => updateField('block', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="e.g. North Wing - Block A" /></div>
+                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Total Floor Count</label><input type="number" min="1" value={form.totalFloors} onChange={(event) => updateField('totalFloors', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="0" /></div>
+                <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Total Room Capacity</label><input type="number" min="0" value={form.totalCapacity} onChange={(event) => updateField('totalCapacity', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="0" /></div>
+                <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Address</label><textarea value={form.address} onChange={(event) => updateField('address', event.target.value)} className="mt-2 min-h-[120px] w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="Enter the full street address and campus proximity details..." /></div>
+                <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Description</label><textarea value={form.description} onChange={(event) => updateField('description', event.target.value)} className="mt-2 min-h-[120px] w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="Short description shown to students during browsing..." /></div>
               </div>
             </section>
 
             <section className="rounded-2xl border border-[#ece7e4] bg-white p-8">
               <h3 className="mb-8 flex items-center gap-3 text-2xl font-extrabold"><span className="rounded-full bg-blue-50 p-3 text-primary"><Icon name="gavel" /></span> Rules & Policies</h3>
               <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Dormitory Regulations</label>
-              <textarea className="mt-3 min-h-[220px] w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="List the house rules, curfew times, and maintenance policies..." />
+              <textarea value={form.rules} onChange={(event) => updateField('rules', event.target.value)} className="mt-3 min-h-[220px] w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="List the house rules, curfew times, and maintenance policies..." />
               <p className="mt-4 text-sm text-secondary">These rules will be displayed to students during the application process.</p>
             </section>
           </div>
@@ -62,15 +138,19 @@ function AddDormPage() {
           <div className="space-y-8 xl:col-span-4">
             <section className="rounded-2xl border border-[#ece7e4] bg-white p-8">
               <h3 className="mb-6 flex items-center gap-3 text-2xl font-extrabold"><span className="rounded-full bg-blue-50 p-3 text-primary"><Icon name="photo_camera" /></span> Dorm Photos</h3>
-              <div className="flex min-h-[240px] flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#d8d2cf] text-center">
+              <button type="button" onClick={addImageUrl} className="flex min-h-[240px] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#d8d2cf] text-center">
                 <Icon name="add_a_photo" className="text-5xl text-secondary" />
-                <p className="mt-4 text-xl font-semibold">Click to upload photos</p>
-                <p className="mt-2 max-w-[220px] text-sm text-secondary">High resolution .jpg or .png up to 10MB</p>
-              </div>
+                <p className="mt-4 text-xl font-semibold">Click to add photo URL</p>
+                <p className="mt-2 max-w-[220px] text-sm text-secondary">Store image links to keep dorm gallery visible.</p>
+              </button>
               <div className="mt-5 grid grid-cols-3 gap-4">
-                <div className="h-20 rounded-xl bg-slate-900" />
-                <div className="flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-[#d8d2cf] text-3xl text-secondary">+</div>
-                <div className="flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-[#d8d2cf] text-3xl text-secondary">+</div>
+                {[0, 1, 2].map((slot) => (
+                  images[slot] ? (
+                    <img key={slot} src={images[slot]} alt={`Dorm preview ${slot + 1}`} className="h-20 w-full rounded-xl object-cover" />
+                  ) : (
+                    <button key={slot} type="button" onClick={addImageUrl} className="flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-[#d8d2cf] text-3xl text-secondary">+</button>
+                  )
+                ))}
               </div>
             </section>
 
@@ -87,7 +167,7 @@ function AddDormPage() {
                   )
                 })}
               </div>
-              <button className="mt-6 w-full rounded-xl border border-[#d8d2cf] px-5 py-4 text-lg font-semibold text-primary">Add Custom Amenity</button>
+              <button type="button" onClick={addCustomAmenity} className="mt-6 w-full rounded-xl border border-[#d8d2cf] px-5 py-4 text-lg font-semibold text-primary">Add Custom Amenity</button>
             </section>
           </div>
         </div>
@@ -97,5 +177,3 @@ function AddDormPage() {
 }
 
 export default AddDormPage
-
-

@@ -21,26 +21,30 @@ function sanitizeUser(user) {
 
 export const signup = asyncHandler(async (req, res) => {
   const { name, email, password, role = 'student', studentId, phone, department, university } = req.body
+  const normalizedName = String(name || '').trim()
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+  const normalizedRole = role === 'admin' ? 'admin' : 'student'
+  const normalizedStudentId = String(studentId || '').trim()
 
-  if (!name || !email || !password) {
+  if (!normalizedName || !normalizedEmail || !password) {
     throw new ApiError(400, 'Name, email and password are required')
   }
 
-  const existing = await User.findOne({ email })
+  const existing = await User.findOne({ email: normalizedEmail })
   if (existing) {
     throw new ApiError(409, 'Email already exists')
   }
 
-  if (role === 'student' && !studentId) {
+  if (normalizedRole === 'student' && !normalizedStudentId) {
     throw new ApiError(400, 'studentId is required for student registration')
   }
 
   const user = await User.create({
-    name,
-    email,
+    name: normalizedName,
+    email: normalizedEmail,
     password,
-    role,
-    studentId,
+    role: normalizedRole,
+    studentId: normalizedStudentId || undefined,
     phone,
     department,
     university,
@@ -58,12 +62,13 @@ export const signup = asyncHandler(async (req, res) => {
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body
+  const normalizedEmail = String(email || '').trim().toLowerCase()
 
-  if (!email || !password) {
+  if (!normalizedEmail || !password) {
     throw new ApiError(400, 'Email and password are required')
   }
 
-  const user = await User.findOne({ email }).select('+password')
+  const user = await User.findOne({ email: normalizedEmail }).select('+password')
   if (!user) {
     throw new ApiError(401, 'Invalid email or password')
   }

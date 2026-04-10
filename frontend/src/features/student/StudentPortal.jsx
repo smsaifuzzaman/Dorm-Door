@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
@@ -44,6 +44,8 @@ function Avatar({ src, alt = 'avatar', className = '' }) {
 }
 
 function Sidebar({ activePage, setActivePage, onSignOut }) {
+  const supportActive = activePage === 'support'
+
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[250px] flex-col border-r border-[#ece8e6] bg-[#fcf9f8] px-4 py-7">
       <div className="mb-8 px-3">
@@ -76,10 +78,15 @@ function Sidebar({ activePage, setActivePage, onSignOut }) {
         <button
           type="button"
           onClick={() => setActivePage('support')}
-          className="flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-left text-[13px] text-[#5f6772] transition hover:bg-[#f3efed]"
+          className={`flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-left text-[13px] transition ${
+            supportActive
+              ? 'bg-white font-bold text-[#0c56d0] shadow-[0_2px_10px_rgba(0,0,0,0.04)] ring-1 ring-[#efebea]'
+              : 'text-[#5f6772] hover:bg-[#f3efed]'
+          }`}
         >
-          <Icon name="help" className="text-[17px]" />
+          <Icon name="help" filled={supportActive} className="text-[17px]" />
           <span>Support</span>
+          {supportActive ? <span className="ml-auto h-8 w-[4px] rounded-full bg-[#0c56d0]" /> : null}
         </button>
         <button
           type="button"
@@ -94,8 +101,195 @@ function Sidebar({ activePage, setActivePage, onSignOut }) {
   )
 }
 
+function formatNotificationTimestamp(value) {
+  if (!value) return 'Now'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Now'
+  return parsed.toLocaleString('en-US', {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function Topbar({ placeholder = 'Search portal...' }) {
+  const navigate = useNavigate()
   const { language, setLanguage } = useLanguage()
+  const { token, user, logout } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const demoStorageKey = 'dormdoor_demo_student_notifications'
+
+  const [notifications, setNotifications] = useState([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [notificationsError, setNotificationsError] = useState('')
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+
+  const notificationMenuRef = useRef(null)
+  const settingsMenuRef = useRef(null)
+
+  const unreadCount = useMemo(
+    () => notifications.filter((notification) => !notification.read).length,
+    [notifications],
+  )
+
+  const parseDemoNotifications = (raw) => {
+    if (!raw) return null
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  const seedDemoNotifications = () => {
+    return [
+      {
+        _id: 'demo-notification-1',
+        title: 'Application Updated',
+        message: 'Your latest room application is now under review.',
+        type: 'application',
+        read: false,
+        createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+      },
+      {
+        _id: 'demo-notification-2',
+        title: 'Document Review',
+        message: 'Passport photo has been verified successfully.',
+        type: 'document',
+        read: false,
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      },
+      {
+        _id: 'demo-notification-3',
+        title: 'Support Reply Received',
+        message: 'Dorm admin responded to your support ticket.',
+        type: 'support',
+        read: true,
+        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ]
+  }
+
+  const persistDemoNotifications = (nextNotifications) => {
+    localStorage.setItem(demoStorageKey, JSON.stringify(nextNotifications))
+  }
+
+  const refreshNotifications = async () => {
+    setNotificationsLoading(true)
+    setNotificationsError('')
+
+    try {
+      if (isDemoUser) {
+        const stored = parseDemoNotifications(localStorage.getItem(demoStorageKey))
+        if (stored) {
+          setNotifications(stored)
+        } else {
+          const seed = seedDemoNotifications()
+          persistDemoNotifications(seed)
+          setNotifications(seed)
+        }
+        return
+      }
+
+      if (!token) {
+        setNotifications([])
+        return
+      }
+
+      const { data } = await api.get('/notifications')
+      setNotifications(data.notifications || [])
+    } catch (requestError) {
+      setNotificationsError(requestError.response?.data?.message || 'Failed to load notifications')
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }
+
+  const handleNotificationToggle = () => {
+    setShowSettings(false)
+    setShowNotifications((current) => {
+      const nextOpen = !current
+      if (nextOpen) {
+        void refreshNotifications()
+      }
+      return nextOpen
+    })
+  }
+
+  const handleSettingsToggle = () => {
+    setShowNotifications(false)
+    setShowSettings((current) => !current)
+  }
+
+  const handleMarkRead = async (notificationId) => {
+    if (!notificationId) return
+    const target = notifications.find((item) => item._id === notificationId)
+    if (!target || target.read) return
+
+    try {
+      if (isDemoUser) {
+        const next = notifications.map((item) => (item._id === notificationId ? { ...item, read: true } : item))
+        setNotifications(next)
+        persistDemoNotifications(next)
+        return
+      }
+
+      await api.patch(`/notifications/${notificationId}/read`)
+      setNotifications((prev) => prev.map((item) => (item._id === notificationId ? { ...item, read: true } : item)))
+    } catch (requestError) {
+      setNotificationsError(requestError.response?.data?.message || 'Failed to update notification status')
+    }
+  }
+
+  const handleMarkAllRead = async () => {
+    const unreadNotifications = notifications.filter((item) => !item.read)
+    if (!unreadNotifications.length) return
+
+    try {
+      if (isDemoUser) {
+        const next = notifications.map((item) => ({ ...item, read: true }))
+        setNotifications(next)
+        persistDemoNotifications(next)
+        return
+      }
+
+      await Promise.all(unreadNotifications.map((item) => api.patch(`/notifications/${item._id}/read`)))
+      setNotifications((prev) => prev.map((item) => ({ ...item, read: true })))
+    } catch (requestError) {
+      setNotificationsError(requestError.response?.data?.message || 'Failed to mark notifications as read')
+    }
+  }
+
+  const goToProfile = () => {
+    setShowSettings(false)
+    navigate('/student/profile')
+  }
+
+  const signOutFromMenu = () => {
+    setShowSettings(false)
+    logout()
+    navigate('/login', { replace: true })
+  }
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target)) {
+        setShowNotifications(false)
+      }
+
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
+        setShowSettings(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [])
 
   return (
     <header className="fixed left-[250px] right-0 top-0 z-30 border-b border-[#ece8e6] bg-[#fcf9f8]/90 px-8 py-4 backdrop-blur">
@@ -125,15 +319,92 @@ function Topbar({ placeholder = 'Search portal...' }) {
               BN
             </button>
           </div>
-          <button type="button" className="relative text-[#626b77]">
-            <Icon name="notifications" className="text-[20px]" />
-            <span className="pulse-dot absolute -right-1 top-0 h-2 w-2 rounded-full bg-[#e11d48]" />
-          </button>
-          <button type="button" className="text-[#626b77]">
-            <Icon name="settings" className="text-[20px]" />
-          </button>
+
+          <div className="relative" ref={notificationMenuRef}>
+            <button type="button" onClick={handleNotificationToggle} className="relative text-[#626b77]">
+              <Icon name="notifications" className="text-[20px]" />
+              {unreadCount > 0 ? <span className="pulse-dot absolute -right-1 top-0 h-2 w-2 rounded-full bg-[#e11d48]" /> : null}
+            </button>
+
+            {showNotifications ? (
+              <div className="absolute right-0 top-11 z-50 w-[360px] rounded-2xl bg-white p-4 shadow-[0_20px_40px_rgba(0,0,0,0.15)] ring-1 ring-[#efebea]">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-extrabold tracking-[-0.03em]">Notifications</p>
+                  <button
+                    type="button"
+                    onClick={handleMarkAllRead}
+                    disabled={unreadCount === 0}
+                    className="text-xs font-bold text-[#0c56d0] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Mark all read
+                  </button>
+                </div>
+
+                {notificationsLoading ? <p className="py-3 text-sm text-[#6b7280]">Loading notifications...</p> : null}
+                {notificationsError ? <p className="rounded-lg bg-[#ffe9ec] px-3 py-2 text-xs font-semibold text-[#c73535]">{notificationsError}</p> : null}
+
+                {!notificationsLoading && !notificationsError ? (
+                  notifications.length === 0 ? (
+                    <p className="py-3 text-sm text-[#6b7280]">No notifications yet.</p>
+                  ) : (
+                    <div className="max-h-[320px] space-y-2 overflow-auto pr-1">
+                      {notifications.map((notification) => (
+                        <button
+                          key={notification._id}
+                          type="button"
+                          onClick={() => handleMarkRead(notification._id)}
+                          className={`w-full rounded-xl px-3 py-3 text-left ring-1 transition ${
+                            notification.read
+                              ? 'bg-[#f7f4f3] text-[#58606b] ring-transparent'
+                              : 'bg-[#eef3ff] text-[#1f2937] ring-[#d7e3ff]'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="text-[13px] font-bold">{notification.title}</p>
+                            {!notification.read ? <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#0c56d0]" /> : null}
+                          </div>
+                          <p className="mt-1 text-[12px] leading-5">{notification.message}</p>
+                          <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#7a818d]">
+                            {formatNotificationTimestamp(notification.createdAt)}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="relative" ref={settingsMenuRef}>
+            <button type="button" onClick={handleSettingsToggle} className="text-[#626b77]">
+              <Icon name="settings" className="text-[20px]" />
+            </button>
+
+            {showSettings ? (
+              <div className="absolute right-0 top-11 z-50 w-48 rounded-2xl bg-white p-2 shadow-[0_20px_40px_rgba(0,0,0,0.15)] ring-1 ring-[#efebea]">
+                <button
+                  type="button"
+                  onClick={goToProfile}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-[#2d3748] transition hover:bg-[#f7f4f3]"
+                >
+                  <Icon name="edit" className="text-[18px]" />
+                  Edit Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={signOutFromMenu}
+                  className="mt-1 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-semibold text-[#d03030] transition hover:bg-[#fff1f1]"
+                >
+                  <Icon name="logout" className="text-[18px]" />
+                  Sign Out
+                </button>
+              </div>
+            ) : null}
+          </div>
+
           <Avatar
-            src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80"
+            src={user?.profileImage || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80'}
             className="h-11 w-11 ring-2 ring-white"
           />
         </div>
@@ -269,12 +540,15 @@ function DashboardPage({ setActivePage }) {
             <h3 className="text-[17px] font-extrabold tracking-[-0.04em]">Need Support?</h3>
             <p className="mt-3 text-[13px] leading-6 text-white/75">Our team is available 24/7 for any housing assistance.</p>
             <button type="button" onClick={() => setActivePage('support')} className="mt-5 w-full rounded-2xl bg-white py-3.5 font-bold text-[#274b5a]">Chat Support</button>
-            <button type="button" onClick={() => setActivePage('support')} className="mt-3 w-full rounded-2xl border border-white/20 bg-white/10 py-3.5 font-bold text-white">Contact Admin</button>
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-[12px] font-semibold text-white/80">
+              <Icon name="schedule" className="text-[16px]" />
+              <span>Typical response time: under 30 minutes</span>
+            </div>
           </section>
         </div>
       </div>
 
-      <p className="mt-10 text-center text-[11px] uppercase tracking-[0.35em] text-[#7a8088]">© 2024 The Atelier Student Housing • Academic Elite Standard</p>
+      <p className="mt-10 text-center text-[11px] uppercase tracking-[0.35em] text-[#7a8088]">Â© 2024 The Atelier Student Housing â€¢ Academic Elite Standard</p>
     </PageFrame>
   )
 }
@@ -283,6 +557,7 @@ function RoomApplicationsPage() {
   const navigate = useNavigate()
   const { token } = useAuth()
   const [applications, setApplications] = useState([])
+  const [expandedApplicationId, setExpandedApplicationId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -418,35 +693,113 @@ function RoomApplicationsPage() {
     })
   }
 
+  const formatDateTime = (value) => {
+    if (!value) return 'Not available'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'Not available'
+    return parsed.toLocaleString('en-US', {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
   const Row = ({ item, faded = false }) => {
     const dormName = item.dorm?.name || 'Dorm not assigned'
     const roomType = item.room?.type || item.preferences?.preferredRoomType || 'Not specified'
     const statusText = item.status || 'Pending'
     const block = item.dorm?.block ? ` - ${item.dorm.block}` : ''
+    const isExpanded = expandedApplicationId === item._id
 
     return (
-      <div className={`grid grid-cols-[110px_1.2fr_1fr_1fr_180px_56px] items-center gap-6 rounded-[26px] bg-white px-6 py-6 ring-1 ring-[#efebea] ${faded ? 'opacity-65' : ''}`}>
-        <img src="https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=300&q=80" alt={dormName} className="h-24 w-24 rounded-2xl object-cover" />
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Dorm Name</p>
-          <p className="mt-2 text-[15px] font-extrabold tracking-[-0.03em]">{dormName}{block}</p>
+      <div className={`space-y-3 ${faded ? 'opacity-65' : ''}`}>
+        <div
+          className={`grid grid-cols-[110px_1.2fr_1fr_1fr_180px_56px] items-center gap-6 rounded-[26px] bg-white px-6 py-6 ring-1 ring-[#efebea] transition ${
+            isExpanded ? 'ring-[#cdd9e6] shadow-[0_8px_22px_rgba(0,0,0,0.05)]' : ''
+          }`}
+        >
+          <img src="https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=300&q=80" alt={dormName} className="h-24 w-24 rounded-2xl object-cover" />
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Dorm Name</p>
+            <p className="mt-2 text-[15px] font-extrabold tracking-[-0.03em]">{dormName}{block}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Room Type</p>
+            <p className="mt-2 text-[14px]">{roomType}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Submitted</p>
+            <p className="mt-2 text-[14px]">{formatDate(item.createdAt)}</p>
+          </div>
+          <div>
+            <span className={`inline-flex rounded-full px-4 py-2 text-[13px] font-bold ${statusClasses(statusText)}`}>
+              {statusText}
+            </span>
+          </div>
+          <button
+            type="button"
+            aria-label={isExpanded ? 'Hide request details' : 'Show request details'}
+            aria-expanded={isExpanded}
+            onClick={() => setExpandedApplicationId((current) => (current === item._id ? null : item._id))}
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f2f1] text-[#333] transition hover:bg-[#ebe6e4]"
+          >
+            <span className={`transition ${isExpanded ? 'rotate-90' : ''}`}>
+              <Icon name="chevron_right" />
+            </span>
+          </button>
         </div>
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Room Type</p>
-          <p className="mt-2 text-[14px]">{roomType}</p>
-        </div>
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Submitted</p>
-          <p className="mt-2 text-[14px]">{formatDate(item.createdAt)}</p>
-        </div>
-        <div>
-          <span className={`inline-flex rounded-full px-4 py-2 text-[13px] font-bold ${statusClasses(statusText)}`}>
-            {statusText}
-          </span>
-        </div>
-        <button type="button" className="flex h-12 w-12 items-center justify-center rounded-full bg-[#f5f2f1] text-[#333]">
-          <Icon name="chevron_right" />
-        </button>
+
+        {isExpanded ? (
+          <div className="rounded-[22px] border border-[#e6e1df] bg-[#fdfcfc] p-6">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#7b818c]">Application</p>
+                <div className="mt-3 space-y-2 text-[14px]">
+                  <p><span className="font-bold">Request ID:</span> {item._id ? String(item._id).slice(-8).toUpperCase() : 'Not available'}</p>
+                  <p><span className="font-bold">Room Number:</span> {item.room?.roomNumber || 'To be assigned'}</p>
+                  <p><span className="font-bold">Monthly Fee:</span> {item.room?.priceMonthly ? `BDT ${item.room.priceMonthly}` : 'Not available'}</p>
+                  <p><span className="font-bold">Move-In Preference:</span> {formatDate(item.preferences?.moveInDate)}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#7b818c]">Applicant Info</p>
+                <div className="mt-3 space-y-2 text-[14px]">
+                  <p><span className="font-bold">Name:</span> {item.personalInfo?.fullName || 'Not provided'}</p>
+                  <p><span className="font-bold">Email:</span> {item.personalInfo?.email || 'Not provided'}</p>
+                  <p><span className="font-bold">Phone:</span> {item.personalInfo?.phone || 'Not provided'}</p>
+                  <p><span className="font-bold">Department:</span> {item.personalInfo?.department || 'Not provided'}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#7b818c]">Preferences & Notes</p>
+                <div className="mt-3 space-y-2 text-[14px]">
+                  <p><span className="font-bold">Block Preference:</span> {item.preferences?.blockPreference || 'Not set'}</p>
+                  <p><span className="font-bold">Special Request:</span> {item.preferences?.specialRequests || 'None'}</p>
+                  <p><span className="font-bold">Emergency Contact:</span> {item.emergencyContact?.name || 'Not provided'} ({item.emergencyContact?.phone || 'N/A'})</p>
+                  <p><span className="font-bold">Admin Note:</span> {item.adminNote || 'No admin note yet.'}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-[#ece7e4] pt-5 text-[13px] text-[#5e6772]">
+              <span className="rounded-full bg-white px-3 py-1 ring-1 ring-[#ece7e4]">Submitted: {formatDateTime(item.createdAt)}</span>
+              <span className="rounded-full bg-white px-3 py-1 ring-1 ring-[#ece7e4]">Last Update: {formatDateTime(item.updatedAt || item.createdAt)}</span>
+              {statusText === 'Re-upload Requested' ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/student/documents')}
+                  className="rounded-full bg-[#0c56d0] px-4 py-2 font-bold text-white"
+                >
+                  Upload Updated Documents
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -536,68 +889,274 @@ function RoomApplicationsPage() {
 }
 
 function MaintenancePage() {
-  const rows = [
-    ['#MT-8829', 'plumbing', 'Bathroom Sink Clog', 'Slow drainage in ensuite bath', 'Oct 24, 2023', 'Pending'],
-    ['#MT-8812', 'bolt', 'Flickering Desk Lamp', 'Outlet voltage inconsistency suspected', 'Oct 22, 2023', 'Scheduled'],
-    ['#MT-8794', 'chair', 'Loose Desk Drawer', 'Right-side rail alignment repair', 'Oct 18, 2023', 'Resolved'],
-  ]
+  const { token } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const demoStorageKey = 'dormdoor_demo_student_maintenance'
+
+  const initialForm = {
+    title: '',
+    description: '',
+    priority: 'Medium',
+  }
+
+  const [tickets, setTickets] = useState([])
+  const [form, setForm] = useState(initialForm)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const parseDemoTickets = () => {
+    try {
+      const raw = localStorage.getItem(demoStorageKey)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  const fetchTickets = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const stored = parseDemoTickets()
+        if (stored) {
+          setTickets(stored)
+          return
+        }
+
+        const seed = [
+          {
+            _id: 'demo-maint-1',
+            title: 'Bathroom Sink Clog',
+            description: 'Water drains slowly in the ensuite bathroom sink.',
+            priority: 'High',
+            status: 'Pending',
+            createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            _id: 'demo-maint-2',
+            title: 'Flickering Desk Lamp',
+            description: 'Desk lamp flickers intermittently at night.',
+            priority: 'Medium',
+            status: 'Scheduled',
+            createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            _id: 'demo-maint-3',
+            title: 'Loose Desk Drawer',
+            description: 'Right drawer rail needs alignment.',
+            priority: 'Low',
+            status: 'Resolved',
+            createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        ]
+
+        localStorage.setItem(demoStorageKey, JSON.stringify(seed))
+        setTickets(seed)
+        return
+      }
+
+      const { data } = await api.get('/maintenance')
+      setTickets(data.tickets || [])
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to load maintenance tickets')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTickets()
+  }, [isDemoUser, token])
+
+  const handleChange = (event) => {
+    const { name, value } = event.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    if (!form.title.trim() || !form.description.trim()) {
+      setError('Title and description are required.')
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const created = {
+          _id: `demo-maint-${Date.now()}`,
+          title: form.title.trim(),
+          description: form.description.trim(),
+          priority: form.priority,
+          status: 'Pending',
+          createdAt: new Date().toISOString(),
+        }
+
+        const next = [created, ...tickets]
+        setTickets(next)
+        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+      } else {
+        await api.post('/maintenance', {
+          title: form.title.trim(),
+          description: form.description.trim(),
+          priority: form.priority,
+        })
+        await fetchTickets()
+      }
+
+      setForm(initialForm)
+      setMessage('Maintenance request submitted successfully.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to submit maintenance request')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const statusCounts = useMemo(() => {
+    return {
+      pending: tickets.filter((item) => item.status === 'Pending').length,
+      scheduled: tickets.filter((item) => item.status === 'Scheduled').length,
+      resolved: tickets.filter((item) => item.status === 'Resolved').length,
+    }
+  }, [tickets])
+
+  const formatDate = (value) => {
+    if (!value) return 'N/A'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'N/A'
+    return parsed.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+  }
+
+  const statusClass = (status) => {
+    if (status === 'Pending') return 'bg-[#fff2de] text-[#b7791f]'
+    if (status === 'Scheduled') return 'bg-[#e9f0ff] text-[#4775d6]'
+    if (status === 'Resolved') return 'bg-[#ecf7ef] text-[#23945b]'
+    return 'bg-[#eef1f4] text-[#5f6772]'
+  }
 
   return (
-    <PageFrame placeholder="Search requests or guides...">
+    <PageFrame placeholder="Search maintenance requests...">
       <div className="flex items-start justify-between gap-8">
         <div>
           <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#6b7280]">Service Center</p>
-          <h1 className="mt-3 text-[48px] font-extrabold leading-none tracking-[-0.06em]">Maintenance Requests</h1>
-          <p className="mt-4 max-w-[850px] text-[16px] leading-8 text-[#546067]">Ensure your sanctuary remains pristine. Report any issues within your suite and track our engineering team's progress in real-time.</p>
+          <h1 className="mt-3 text-[44px] font-extrabold leading-none tracking-[-0.06em]">Maintenance Requests</h1>
+          <p className="mt-4 max-w-[850px] text-[16px] leading-8 text-[#546067]">
+            Report room issues and track status updates from the housing maintenance team.
+          </p>
         </div>
-        <button type="button" className="interactive mt-6 rounded-[22px] bg-[#0c56d0] px-8 py-5 text-[16px] font-bold text-white shadow-[0_14px_24px_rgba(12,86,208,0.16)]">+ Report Issue</button>
       </div>
 
-      <div className="mt-10 grid grid-cols-[280px_280px_1fr] gap-6">
-        <div className="card-hover rounded-[28px] bg-white p-6 ring-1 ring-[#efebea]"><div className="flex items-start justify-between"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#dceaf3] text-[#0c56d0]"><Icon name="pending_actions" /></div><h3 className="text-[38px] font-extrabold tracking-[-0.06em]">02</h3></div><p className="mt-6 text-[16px] font-bold">Active Requests</p><p className="text-[14px] text-[#6b7280]">Awaiting technician assignment</p></div>
-        <div className="card-hover rounded-[28px] bg-white p-6 ring-1 ring-[#efebea]"><div className="flex items-start justify-between"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#dff0f6] text-[#46606d]"><Icon name="event_available" /></div><h3 className="text-[38px] font-extrabold tracking-[-0.06em]">01</h3></div><p className="mt-6 text-[16px] font-bold">Scheduled Visits</p><p className="text-[14px] text-[#6b7280]">Tech arriving tomorrow, 10:00 AM</p></div>
-        <div className="overflow-hidden rounded-[28px] bg-[linear-gradient(120deg,#0b356f,#0c56d0)] p-6 text-white shadow-[0_14px_28px_rgba(12,86,208,0.18)]"><p className="text-[12px] font-bold uppercase tracking-[0.28em] text-white/70">Response Guarantee</p><h3 className="mt-5 text-[32px] font-extrabold leading-tight tracking-[-0.05em]">24-Hour Resolution Target</h3></div>
+      <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="rounded-[24px] bg-white p-6 ring-1 ring-[#efebea]">
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#6b7280]">Pending</p>
+          <p className="mt-3 text-[34px] font-extrabold tracking-[-0.05em]">{statusCounts.pending}</p>
+        </div>
+        <div className="rounded-[24px] bg-white p-6 ring-1 ring-[#efebea]">
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#6b7280]">Scheduled</p>
+          <p className="mt-3 text-[34px] font-extrabold tracking-[-0.05em]">{statusCounts.scheduled}</p>
+        </div>
+        <div className="rounded-[24px] bg-white p-6 ring-1 ring-[#efebea]">
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#6b7280]">Resolved</p>
+          <p className="mt-3 text-[34px] font-extrabold tracking-[-0.05em]">{statusCounts.resolved}</p>
+        </div>
       </div>
 
-      <section className="mt-10 rounded-[30px] bg-[#f4f1f0] p-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-[20px] font-extrabold tracking-[-0.04em]">Recent Submissions</h2>
-          <div className="flex gap-8 text-[14px] font-semibold text-[#546067]"><span className="rounded-full bg-white px-4 py-2 text-[#0c56d0]">All Status</span><span>Pending</span><span>Scheduled</span></div>
-        </div>
-        <div className="mb-4 grid grid-cols-[140px_1.4fr_180px_210px_120px] px-6 text-[11px] font-bold uppercase tracking-[0.18em] text-[#6b7280]">
-          <div>Request ID</div><div>Category &amp; Description</div><div>Date Reported</div><div>Current Status</div><div>Actions</div>
-        </div>
-        <div className="space-y-4">
-          {rows.map((row) => (
-            <div key={row[0]} className={`grid grid-cols-[140px_1.4fr_180px_210px_120px] items-center rounded-[24px] bg-white px-6 py-5 ${row[5] === 'Resolved' ? 'opacity-75' : ''}`}>
-              <div className="font-bold text-[#0c56d0]">{row[0]}</div>
-              <div className="flex items-center gap-4"><div className={`flex h-12 w-12 items-center justify-center rounded-full ${row[5] === 'Resolved' ? 'bg-[#efebea] text-[#6b7280]' : 'bg-[#dceaf3] text-[#46606d]'}`}><Icon name={row[1]} /></div><div><p className="text-[17px] font-bold tracking-[-0.03em]">{row[2]}</p><p className="text-[14px] text-[#6b7280]">{row[3]}</p></div></div>
-              <div className="text-[16px]">{row[4]}</div>
-              <div><span className={`inline-flex rounded-full px-4 py-2 text-[13px] font-bold ${row[5] === 'Pending' ? 'bg-[#fff2de] text-[#b7791f]' : row[5] === 'Scheduled' ? 'bg-[#e9f0ff] text-[#4775d6]' : 'bg-[#ecf7ef] text-[#23945b]'}`}>{row[5]}</span></div>
-              <div className="text-[14px] font-semibold text-[#0c56d0]">{row[5] === 'Pending' ? 'View Details' : row[5] === 'Scheduled' ? 'Oct 26' : <Icon name="receipt_long" className="text-[#6b7280]" />}</div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-[1fr_1.4fr]">
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">Report New Issue</h2>
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Title
+              <input
+                name="title"
+                value={form.title}
+                onChange={handleChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                required
+              />
+            </label>
 
-      <div className="mt-10 grid grid-cols-[1fr_1.1fr] gap-8">
-        <section className="relative overflow-hidden rounded-[30px] bg-white p-8 ring-1 ring-[#efebea]">
-          <h3 className="text-[18px] font-extrabold tracking-[-0.04em]">Emergency Protocol</h3>
-          <p className="mt-5 max-w-[470px] text-[16px] leading-8 text-[#546067]">For life-threatening emergencies, fire, or major floods, please use the 24/7 Concierge Hotline immediately.</p>
-          <button type="button" className="mt-8 text-[20px] font-extrabold text-[#0c56d0]">Contact Concierge →</button>
-          <div className="absolute bottom-3 right-4 text-[180px] leading-none text-[#f2efee]">✱</div>
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Description
+              <textarea
+                name="description"
+                rows="4"
+                value={form.description}
+                onChange={handleChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                required
+              />
+            </label>
+
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Priority
+              <select
+                name="priority"
+                value={form.priority}
+                onChange={handleChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </label>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:opacity-70"
+            >
+              {saving ? 'Submitting...' : 'Submit Request'}
+            </button>
+          </form>
+
+          {message ? <p className="mt-4 rounded-lg bg-[#ecf7ef] px-4 py-3 text-sm font-semibold text-[#23945b]">{message}</p> : null}
+          {error ? <p className="mt-4 rounded-lg bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
         </section>
 
-        <section>
-          <p className="mb-4 text-[12px] font-bold uppercase tracking-[0.28em] text-[#6b7280]">Maintenance Guides</p>
-          <div className="space-y-4">
-            {['Managing Humidity in Suites', 'Smart Lighting Setup Guide'].map((guide) => (
-              <div key={guide} className="flex items-center justify-between rounded-[24px] bg-white px-6 py-5 ring-1 ring-[#efebea]">
-                <div className="flex items-center gap-4"><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#eef3ff] text-[#0c56d0]"><Icon name="tips_and_updates" /></div><p className="text-[17px] font-bold tracking-[-0.03em]">{guide}</p></div>
-                <Icon name="chevron_right" className="text-[#6b7280]" />
-              </div>
-            ))}
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">My Tickets</h2>
+            {loading ? <span className="text-sm text-[#6b7280]">Loading...</span> : null}
           </div>
+
+          {!loading && tickets.length === 0 ? (
+            <p className="rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No maintenance tickets yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {tickets.map((ticket) => (
+                <div key={ticket._id} className="rounded-[20px] bg-[#f7f4f3] p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[16px] font-bold">{ticket.title}</p>
+                      <p className="mt-1 text-[13px] text-[#6b7280]">{ticket.description}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-[12px] font-bold ${statusClass(ticket.status)}`}>
+                      {ticket.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-3 text-[12px] font-semibold text-[#6b7280]">
+                    <span>Priority: {ticket.priority || 'Medium'}</span>
+                    <span className="h-1 w-1 rounded-full bg-[#9aa3ae]" />
+                    <span>Created: {formatDate(ticket.createdAt)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </PageFrame>
@@ -605,61 +1164,242 @@ function MaintenancePage() {
 }
 
 function DocumentsPage() {
+  const { token } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const demoStorageKey = 'dormdoor_demo_student_documents'
+
+  const initialForm = {
+    category: 'Student ID',
+    fileName: '',
+    fileUrl: '',
+  }
+
+  const [documents, setDocuments] = useState([])
+  const [form, setForm] = useState(initialForm)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const parseDemoDocuments = () => {
+    try {
+      const raw = localStorage.getItem(demoStorageKey)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  const fetchDocuments = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const stored = parseDemoDocuments()
+        if (stored) {
+          setDocuments(stored)
+          return
+        }
+
+        const seed = [
+          {
+            _id: 'demo-doc-1',
+            category: 'Student ID',
+            fileName: 'student-id-card.pdf',
+            fileUrl: 'https://example.com/student-id-card.pdf',
+            status: 'Verified',
+            updatedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            _id: 'demo-doc-2',
+            category: 'Passport Photo',
+            fileName: 'passport-photo.jpg',
+            fileUrl: 'https://example.com/passport-photo.jpg',
+            status: 'Pending',
+            updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        ]
+
+        localStorage.setItem(demoStorageKey, JSON.stringify(seed))
+        setDocuments(seed)
+        return
+      }
+
+      const { data } = await api.get('/documents')
+      setDocuments(data.documents || [])
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to load documents')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDocuments()
+  }, [isDemoUser, token])
+
+  const handleChange = (event) => {
+    const { name, value } = event.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    if (!form.fileName.trim() || !form.fileUrl.trim()) {
+      setError('File name and file URL are required.')
+      return
+    }
+
+    setSaving(true)
+    setMessage('')
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const created = {
+          _id: `demo-doc-${Date.now()}`,
+          category: form.category,
+          fileName: form.fileName.trim(),
+          fileUrl: form.fileUrl.trim(),
+          status: 'Pending',
+          updatedAt: new Date().toISOString(),
+        }
+
+        const next = [created, ...documents]
+        setDocuments(next)
+        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+      } else {
+        await api.post('/documents', {
+          category: form.category,
+          fileName: form.fileName.trim(),
+          fileUrl: form.fileUrl.trim(),
+        })
+        await fetchDocuments()
+      }
+
+      setForm(initialForm)
+      setMessage('Document metadata submitted successfully.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to submit document')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const formatDate = (value) => {
+    if (!value) return 'N/A'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'N/A'
+    return parsed.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+  }
+
+  const statusClass = (status) => {
+    if (status === 'Verified') return 'bg-[#e9f6ed] text-[#24925e]'
+    if (status === 'Rejected' || status === 'Needs Update') return 'bg-[#ffe9ec] text-[#c73535]'
+    return 'bg-[#eef0ff] text-[#4a5fd2]'
+  }
+
   return (
-    <PageFrame placeholder="Search files, guides...">
-      <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#6b7280]">Registry &amp; Verification</p>
-      <h1 className="mt-3 text-[48px] font-extrabold leading-none tracking-[-0.06em]">Academic Credentials</h1>
-      <p className="mt-4 max-w-[900px] text-[16px] leading-8 text-[#546067]">Manage your essential identification and academic records. Ensuring your profile is fully verified grants you seamless access to all dormitory amenities and priority room selection.</p>
+    <PageFrame placeholder="Search documents...">
+      <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-[#6b7280]">Registry and Verification</p>
+      <h1 className="mt-3 text-[44px] font-extrabold leading-none tracking-[-0.06em]">Academic Credentials</h1>
+      <p className="mt-4 max-w-[900px] text-[16px] leading-8 text-[#546067]">
+        Upload document metadata for verification and track review status.
+      </p>
 
-      <div className="mt-10 grid grid-cols-[1.6fr_340px] gap-8">
-        <section className="rounded-[30px] bg-white p-8 ring-1 ring-[#efebea]">
-          <div className="grid grid-cols-[320px_1fr] gap-8">
-            <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80" alt="ID card" className="h-[260px] w-full rounded-[24px] object-cover" />
-            <div>
-              <div className="flex gap-3">
-                <span className="rounded-full bg-[#eef0ff] px-4 py-2 text-[12px] font-bold text-[#4a5fd2]">ID CARD</span>
-                <span className="rounded-full bg-[#e9f6ed] px-4 py-2 text-[12px] font-bold text-[#24925e]">VERIFIED</span>
-              </div>
-              <h2 className="mt-5 text-[38px] font-extrabold leading-tight tracking-[-0.05em]">National Identity Document</h2>
-              <p className="mt-4 max-w-[500px] text-[16px] leading-8 text-[#546067]">Verification completed on Oct 12, 2023. This document is valid for the duration of the current academic year.</p>
-              <div className="mt-8 flex gap-4">
-                <button type="button" className="interactive rounded-[18px] bg-[#0c56d0] px-7 py-4 text-[16px] font-bold text-white shadow-[0_12px_20px_rgba(12,86,208,0.14)]">Update</button>
-                <button type="button" className="rounded-[18px] bg-[#f0edec] px-7 py-4 text-[16px] font-bold text-[#546067]">Download</button>
-              </div>
-            </div>
+      <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-[1fr_1.4fr]">
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">Add Document</h2>
+          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Category
+              <select
+                name="category"
+                value={form.category}
+                onChange={handleChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+              >
+                <option value="Student ID">Student ID</option>
+                <option value="Passport Photo">Passport Photo</option>
+                <option value="Admission Certificate">Admission Certificate</option>
+                <option value="Health Document">Health Document</option>
+                <option value="Other">Other</option>
+              </select>
+            </label>
+
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              File Name
+              <input
+                name="fileName"
+                value={form.fileName}
+                onChange={handleChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                required
+              />
+            </label>
+
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              File URL
+              <input
+                name="fileUrl"
+                value={form.fileUrl}
+                onChange={handleChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                required
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:opacity-70"
+            >
+              {saving ? 'Uploading...' : 'Submit Document'}
+            </button>
+          </form>
+
+          {message ? <p className="mt-4 rounded-lg bg-[#ecf7ef] px-4 py-3 text-sm font-semibold text-[#23945b]">{message}</p> : null}
+          {error ? <p className="mt-4 rounded-lg bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
+        </section>
+
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">My Documents</h2>
+            {loading ? <span className="text-sm text-[#6b7280]">Loading...</span> : null}
           </div>
-        </section>
 
-        <section className="rounded-[30px] bg-[#0c56d0] p-8 text-white shadow-[0_14px_28px_rgba(12,86,208,0.18)]">
-          <p className="text-[12px] font-bold uppercase tracking-[0.28em] text-white/75">Trust Score</p>
-          <h2 className="mt-5 text-[72px] font-extrabold leading-none tracking-[-0.08em]">85%</h2>
-          <p className="mt-5 text-[16px] leading-8 text-white/85">Your profile is nearly verified. Complete your Passport Photo upload to reach 100%.</p>
-          <div className="mt-12 h-2 rounded-full bg-white/25"><div className="h-2 w-[85%] rounded-full bg-white" /></div>
+          {!loading && documents.length === 0 ? (
+            <p className="rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No documents uploaded yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {documents.map((item) => (
+                <div key={item._id} className="rounded-[20px] bg-[#f7f4f3] p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[16px] font-bold">{item.fileName}</p>
+                      <p className="mt-1 text-[13px] text-[#6b7280]">{item.category || 'Document'}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-[12px] font-bold ${statusClass(item.status)}`}>
+                      {item.status || 'Pending'}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-3 text-[12px] font-semibold text-[#6b7280]">
+                    <a href={item.fileUrl} target="_blank" rel="noreferrer" className="text-[#0c56d0] underline">
+                      Open File
+                    </a>
+                    <span className="h-1 w-1 rounded-full bg-[#9aa3ae]" />
+                    <span>Updated: {formatDate(item.updatedAt)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
-
-      <div className="mt-8 grid grid-cols-2 gap-8">
-        <section className="rounded-[30px] border-2 border-dashed border-[#eeebea] bg-white p-8">
-          <div className="flex items-start justify-between"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f3f1f0] text-[#626b77]"><Icon name="add_a_photo" /></div><span className="rounded-full bg-[#fff2de] px-4 py-2 text-[12px] font-bold text-[#b7791f]">PENDING</span></div>
-          <h3 className="mt-8 text-[30px] font-extrabold tracking-[-0.05em]">Passport Sized Photo</h3>
-          <p className="mt-4 max-w-[520px] text-[16px] leading-8 text-[#546067]">Required for your physical dormitory access card. Please use a plain white background.</p>
-          <div className="mt-12 flex items-center justify-between"><span className="text-[13px] font-bold uppercase tracking-[0.16em] text-[#cad0d7]">No File Selected</span><button type="button" className="text-[18px] font-extrabold text-[#0c56d0]">Upload Now →</button></div>
-        </section>
-
-        <section className="rounded-[30px] bg-white p-8 ring-1 ring-[#efebea]">
-          <div className="flex items-start justify-between"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e6f0ff] text-[#0c56d0]"><Icon name="school" /></div><span className="rounded-full bg-[#e9f6ed] px-4 py-2 text-[12px] font-bold text-[#24925e]">VERIFIED</span></div>
-          <h3 className="mt-8 text-[30px] font-extrabold tracking-[-0.05em]">Admission Certificate</h3>
-          <p className="mt-4 max-w-[520px] text-[16px] leading-8 text-[#546067]">Official university enrollment proof for the 2023–2024 academic year.</p>
-          <div className="mt-12 flex items-center justify-between"><div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#f3f1f0] font-bold text-[#7b818c]">PDF</div><div><p className="text-[16px] font-bold">cert_2024.pdf</p><p className="text-[14px] text-[#7b818c]">2.4 MB</p></div></div><button type="button" className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5f2f1]"><Icon name="download" /></button></div>
-        </section>
-      </div>
-
-      <section className="mt-8 flex items-center justify-between rounded-[30px] bg-white p-8 ring-1 ring-[#efebea]">
-        <div className="flex items-center gap-6"><div className="flex h-20 w-20 items-center justify-center rounded-[24px] bg-[#f3f7ff] text-[#0c56d0]"><Icon name="support_agent" className="text-[28px]" /></div><div><h3 className="text-[28px] font-extrabold tracking-[-0.05em]">Need help with document verification?</h3><p className="mt-3 max-w-[720px] text-[16px] leading-8 text-[#546067]">Our administrative team typically reviews all pending documents within 48 hours. If you have been rejected, please check the feedback and re-upload.</p></div></div>
-        <button type="button" className="rounded-[20px] border-2 border-[#0c56d0] px-8 py-4 text-[16px] font-bold text-[#0c56d0]">Contact Registrar</button>
-      </section>
-
-      <footer className="mt-12 flex items-center justify-between text-[12px] uppercase tracking-[0.16em] text-[#bec6ce]"><div>THE ATELIER © 2024</div><div className="flex gap-8"><a href="#">Security Policy</a><a href="#">Compliance</a></div></footer>
     </PageFrame>
   )
 }
@@ -950,7 +1690,7 @@ function ReviewsPage() {
                     <p className="text-[15px] font-bold">{item.dorm?.name || 'Dorm'}</p>
                     <p className="mt-1 text-[13px] text-[#6b7280]">Overall: {item.rating?.overall || '-'} / 5</p>
                     <p className="mt-2 text-[14px] text-[#546067]">{item.comment}</p>
-                    <p className="mt-2 text-[12px] font-semibold text-[#7b818c]">{item.status || 'Published'} � {new Date(item.createdAt).toLocaleDateString()}</p>
+                    <p className="mt-2 text-[12px] font-semibold text-[#7b818c]">{item.status || 'Published'} • {new Date(item.createdAt).toLocaleDateString()}</p>
                   </div>
                 ))
               )}
@@ -962,136 +1702,903 @@ function ReviewsPage() {
   )
 }
 
+const PROFILE_TABS = [
+  { key: 'personal', label: 'Personal' },
+  { key: 'contact', label: 'Contact' },
+  { key: 'security', label: 'Security' },
+  { key: 'notifications', label: 'Notifications' },
+  { key: 'privacy', label: 'Privacy' },
+]
+
+const DEMO_PROFILE_STORAGE_KEY = 'dormdoor_demo_student_profile'
+
+function mapUserToProfileForm(profileUser = {}) {
+  return {
+    name: profileUser.name || '',
+    studentId: profileUser.studentId || '',
+    email: profileUser.email || '',
+    department: profileUser.department || '',
+    university: profileUser.university || '',
+    phone: profileUser.phone || '',
+    address: profileUser.address || '',
+    emergencyContact: {
+      name: profileUser.emergencyContact?.name || '',
+      relation: profileUser.emergencyContact?.relation || '',
+      phone: profileUser.emergencyContact?.phone || '',
+    },
+    settings: {
+      emailNotifications: profileUser.settings?.emailNotifications ?? true,
+      pushNotifications: profileUser.settings?.pushNotifications ?? true,
+      smsNotifications: profileUser.settings?.smsNotifications ?? false,
+    },
+  }
+}
+
+function normalizeProfilePayload(form) {
+  return {
+    name: String(form.name || '').trim(),
+    phone: String(form.phone || '').trim(),
+    department: String(form.department || '').trim(),
+    university: String(form.university || '').trim(),
+    address: String(form.address || '').trim(),
+    emergencyContact: {
+      name: String(form.emergencyContact?.name || '').trim(),
+      relation: String(form.emergencyContact?.relation || '').trim(),
+      phone: String(form.emergencyContact?.phone || '').trim(),
+    },
+    settings: {
+      emailNotifications: Boolean(form.settings?.emailNotifications),
+      pushNotifications: Boolean(form.settings?.pushNotifications),
+      smsNotifications: Boolean(form.settings?.smsNotifications),
+    },
+    studentId: String(form.studentId || '').trim(),
+    email: String(form.email || '').trim(),
+  }
+}
+
+function cacheAuthUserProfile(form) {
+  const raw = localStorage.getItem('dormdoor_user')
+  if (!raw) return
+
+  try {
+    const parsed = JSON.parse(raw)
+    const next = {
+      ...parsed,
+      name: form.name,
+      studentId: form.studentId || parsed.studentId,
+      email: form.email || parsed.email,
+      phone: form.phone,
+      department: form.department,
+      university: form.university,
+      address: form.address,
+      emergencyContact: form.emergencyContact,
+      settings: form.settings,
+    }
+    localStorage.setItem('dormdoor_user', JSON.stringify(next))
+  } catch {
+    // Ignore malformed local cache and keep runtime state stable.
+  }
+}
+
 function ProfilePage() {
-  const info = [
-    ['FULL NAME', 'Julian Alexander Thorne'],
-    ['STUDENT ID', 'UA-2024-88421'],
-    ['UNIVERSITY', 'Metropolitan University of Design'],
-    ['DEPARTMENT', 'Faculty of Architecture & Urbanism'],
-    ['GENDER', 'Male'],
-    ['DATE OF BIRTH', 'October 12, 2001'],
-  ]
+  const { token, user } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const [activeTab, setActiveTab] = useState('personal')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState(() => mapUserToProfileForm(user || {}))
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [passwordForm, setPasswordForm] = useState({
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  })
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordMessage, setPasswordMessage] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadProfile() {
+      setLoading(true)
+      setError('')
+
+      if (!token) {
+        if (mounted) {
+          setForm(mapUserToProfileForm(user || {}))
+          setLoading(false)
+        }
+        return
+      }
+
+      if (isDemoUser) {
+        let cached = null
+        try {
+          cached = JSON.parse(localStorage.getItem(DEMO_PROFILE_STORAGE_KEY))
+        } catch {
+          cached = null
+        }
+
+        const baseProfile = mapUserToProfileForm(user || {})
+        const nextProfile = cached && typeof cached === 'object' ? { ...baseProfile, ...cached } : baseProfile
+
+        if (!cached) {
+          localStorage.setItem(DEMO_PROFILE_STORAGE_KEY, JSON.stringify(nextProfile))
+        }
+
+        if (mounted) {
+          setForm(normalizeProfilePayload(nextProfile))
+          setLoading(false)
+        }
+        return
+      }
+
+      try {
+        const { data } = await api.get('/profile')
+        if (!mounted) return
+
+        const nextProfile = mapUserToProfileForm(data.user || {})
+        setForm(nextProfile)
+      } catch (requestError) {
+        if (!mounted) return
+        setError(requestError.response?.data?.message || 'Failed to load profile')
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadProfile()
+    return () => {
+      mounted = false
+    }
+  }, [isDemoUser, token, user])
+
+  useEffect(() => {
+    setMessage('')
+    setError('')
+    setPasswordMessage('')
+    setPasswordError('')
+  }, [activeTab])
+
+  const textInputClass =
+    'mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm text-[#1c1b1b] placeholder:text-[#9d9a98] focus:ring-2 focus:ring-primary'
+
+  const handleFieldChange = (event) => {
+    const { name, value } = event.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleEmergencyChange = (event) => {
+    const { name, value } = event.target
+    setForm((prev) => ({
+      ...prev,
+      emergencyContact: {
+        ...prev.emergencyContact,
+        [name]: value,
+      },
+    }))
+  }
+
+  const handleSettingChange = (event) => {
+    const { name, checked } = event.target
+    setForm((prev) => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        [name]: checked,
+      },
+    }))
+  }
+
+  const saveProfile = async (successText = 'Profile updated successfully.') => {
+    const payload = normalizeProfilePayload(form)
+    setSaving(true)
+    setMessage('')
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        localStorage.setItem(DEMO_PROFILE_STORAGE_KEY, JSON.stringify(payload))
+        cacheAuthUserProfile(payload)
+        setForm(payload)
+        setMessage(successText)
+        return
+      }
+
+      const { data } = await api.patch('/profile', payload)
+      const nextProfile = mapUserToProfileForm(data.user || payload)
+      setForm(nextProfile)
+      cacheAuthUserProfile(nextProfile)
+      setMessage(data.message || successText)
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to update profile')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handlePasswordChange = (event) => {
+    const { name, value } = event.target
+    setPasswordForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handlePasswordSubmit = async (event) => {
+    event.preventDefault()
+    setPasswordError('')
+    setPasswordMessage('')
+
+    if (!passwordForm.oldPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setPasswordError('Please fill all password fields.')
+      return
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters.')
+      return
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New password and confirmation do not match.')
+      return
+    }
+
+    setPasswordSaving(true)
+    try {
+      if (isDemoUser) {
+        const demoPassword = user?.role === 'admin' ? 'Admin123!' : 'Student123!'
+        if (passwordForm.oldPassword !== demoPassword) {
+          throw new Error('Old password is incorrect')
+        }
+
+        setPasswordMessage('Password updated for demo account.')
+      } else {
+        const { data } = await api.patch('/profile/password', {
+          oldPassword: passwordForm.oldPassword,
+          newPassword: passwordForm.newPassword,
+        })
+        setPasswordMessage(data.message || 'Password updated successfully.')
+      }
+
+      setPasswordForm({
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      })
+    } catch (requestError) {
+      setPasswordError(requestError.response?.data?.message || requestError.message || 'Failed to update password')
+    } finally {
+      setPasswordSaving(false)
+    }
+  }
+
+  const exportProfileData = () => {
+    const data = normalizeProfilePayload(form)
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'dormdoor-profile-export.json'
+    anchor.click()
+    URL.revokeObjectURL(url)
+    setMessage('Profile export downloaded.')
+  }
+
+  const showDeactivateNotice = () => {
+    setError('Account deactivation is not enabled yet. Please contact support.')
+  }
 
   return (
-    <PageFrame placeholder="Search services...">
-      <h1 className="text-[36px] font-extrabold tracking-[-0.05em]">Student Profile</h1>
-
-      <div className="mt-8 grid grid-cols-[340px_1fr] gap-8">
-        <section className="card-hover rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
-          <div className="mx-auto h-2 w-full rounded-full bg-[#0c56d0]" />
-          <div className="relative mt-8 text-center">
-            <Avatar src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=240&q=80" className="mx-auto h-36 w-36 ring-4 ring-[#f0edec]" />
-            <button type="button" className="absolute right-[88px] top-[88px] flex h-12 w-12 items-center justify-center rounded-full bg-[#0c56d0] text-white"><Icon name="edit" /></button>
-          </div>
-          <h2 className="mt-8 text-center text-[34px] font-extrabold tracking-[-0.05em]">Julian Alexander</h2>
-          <p className="mt-2 text-center text-[17px] text-[#546067]">Architecture Senior • Room 402-A</p>
-          <div className="mt-5 flex justify-center gap-3"><span className="rounded-full bg-[#eef1f4] px-4 py-2 text-[12px] font-bold uppercase tracking-[0.12em] text-[#5f6772]">Active Resident</span><span className="rounded-full bg-[#e5f7e9] px-4 py-2 text-[12px] font-bold uppercase tracking-[0.12em] text-[#23945b]">Paid</span></div>
-          <div className="mt-8 grid grid-cols-2 gap-4 border-t border-[#ece8e6] pt-6 text-center"><div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Check-In</p><p className="mt-2 text-[20px] font-extrabold tracking-[-0.03em]">Sep 2023</p></div><div><p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#7b818c]">Contract End</p><p className="mt-2 text-[20px] font-extrabold tracking-[-0.03em]">Jun 2024</p></div></div>
-        </section>
-
-        <section className="card-hover rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
-          <div className="flex items-start justify-between"><div><h3 className="text-[34px] font-extrabold tracking-[-0.05em]">Personal Information</h3><p className="mt-2 text-[17px] text-[#546067]">Manage your academic and personal details.</p></div><button type="button" className="text-[17px] font-bold text-[#0c56d0]">Edit Info</button></div>
-          <div className="mt-10 grid grid-cols-2 gap-x-16 gap-y-10">
-            {info.map(([label, value]) => (
-              <div key={label}><p className="text-[12px] font-bold uppercase tracking-[0.2em] text-[#cad0d7]">{label}</p><p className="mt-3 text-[22px] leading-[1.45] tracking-[-0.03em]">{value}</p></div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <div className="mt-8 grid grid-cols-[1.15fr_0.85fr] gap-8">
-        <section className="rounded-[28px] bg-[#f0edec] p-8">
-          <div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#0c56d0]"><Icon name="contact_page" /></div><h3 className="text-[26px] font-extrabold tracking-[-0.04em]">Contact Information</h3></div>
-          <div className="mt-8 space-y-6">
-            {[
-              ['alternate_email', 'EMAIL ADDRESS', 'j.alexander@metrouniv.edu'],
-              ['call', 'PHONE NUMBER', '+1 (555) 012–3456'],
-              ['location_on', 'PRESENT ADDRESS', 'Room 402–A, The Academic Atelier, 12 University Ave, North District'],
-            ].map(([icon, label, value]) => (
-              <div key={label} className="flex gap-5 rounded-[22px] bg-white px-6 py-5"><Icon name={icon} className="mt-2 text-[24px] text-[#5f6772]" /><div><p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#7b818c]">{label}</p><p className="mt-2 text-[22px] leading-[1.45] tracking-[-0.03em]">{value}</p></div></div>
-            ))}
-          </div>
-        </section>
-
-        <div className="space-y-8">
-          <section className="rounded-[28px] bg-[#f0edec] p-8"><div className="flex items-start justify-between"><div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e7effa] text-[#0c56d0]"><Icon name="shield_lock" filled /></div><h3 className="text-[26px] font-extrabold tracking-[-0.04em]">Security</h3></div><span className="rounded-full bg-[#dff3e4] px-4 py-2 text-[12px] font-bold text-[#23945b]">SECURED</span></div><p className="mt-8 text-[16px] leading-8 text-[#546067]">Update your password or manage multi-factor authentication settings.</p><button type="button" className="mt-8 flex w-full items-center justify-between rounded-[18px] bg-white px-5 py-4 text-[17px] font-bold">Change Account Password<Icon name="chevron_right" className="text-[#7b818c]" /></button></section>
-          <section className="card-hover rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]"><div className="flex items-center gap-4"><div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#eaf3f6] text-[#46606d]"><Icon name="notifications_active" /></div><h3 className="text-[26px] font-extrabold tracking-[-0.04em]">Notification Preferences</h3></div><div className="mt-8 space-y-6">{[['Email Notifications', true], ['Push Notifications', true], ['SMS Alerts', false]].map(([label, on]) => <div key={label} className="flex items-center justify-between text-[17px]"><span>{label}</span><span className={`relative h-8 w-14 rounded-full ${on ? 'bg-[#0c56d0]' : 'bg-[#d7dbe2]'}`}><span className={`absolute top-1 h-6 w-6 rounded-full bg-white transition ${on ? 'right-1' : 'left-1'}`} /></span></div>)}</div></section>
+    <PageFrame placeholder="Search profile settings...">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-[36px] font-extrabold tracking-[-0.05em]">Student Profile</h1>
+          <p className="mt-2 text-[16px] text-[#546067]">Manage your personal data, security, and notification preferences.</p>
         </div>
+        {loading ? <span className="rounded-full bg-[#eef1f4] px-4 py-2 text-[12px] font-bold text-[#5f6772]">Loading...</span> : null}
       </div>
 
-      <section className="mt-8 flex items-center justify-between rounded-[28px] bg-[#f0edec] px-8 py-8"><div><h3 className="text-[26px] font-extrabold tracking-[-0.04em]">Privacy &amp; Data</h3><p className="mt-2 text-[16px] text-[#546067]">Request a copy of your personal data or request account deletion.</p></div><div className="flex gap-5"><button type="button" className="rounded-[18px] border border-[#cad0d7] bg-white px-8 py-4 text-[16px] font-bold">Export Data</button><button type="button" className="rounded-[18px] bg-[#f9dede] px-8 py-4 text-[16px] font-bold text-[#c52424]">Deactivate Account</button></div></section>
+      <div className="mt-6 flex flex-wrap gap-3">
+        {PROFILE_TABS.map((tab) => {
+          const isActive = activeTab === tab.key
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`rounded-full px-5 py-2.5 text-[13px] font-bold transition ${
+                isActive ? 'bg-[#0c56d0] text-white shadow-[0_8px_18px_rgba(12,86,208,0.2)]' : 'bg-[#f1ecea] text-[#5f6772] hover:bg-[#e9e3e1]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {message ? <p className="mt-5 rounded-xl bg-[#ecf7ef] px-4 py-3 text-sm font-semibold text-[#1f7a49]">{message}</p> : null}
+      {error ? <p className="mt-5 rounded-xl bg-[#feecef] px-4 py-3 text-sm font-semibold text-[#c52424]">{error}</p> : null}
+
+      <section className="mt-8 rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+        {loading ? <p className="text-[15px] text-[#6b7280]">Loading profile details...</p> : null}
+
+        {!loading && activeTab === 'personal' ? (
+          <div>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.04em]">Personal Information</h2>
+            <p className="mt-2 text-[15px] text-[#546067]">Keep your core academic profile details up to date.</p>
+            <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2">
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Full Name
+                <input name="name" value={form.name} onChange={handleFieldChange} className={textInputClass} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Student ID
+                <input name="studentId" value={form.studentId} readOnly className={`${textInputClass} cursor-not-allowed opacity-80`} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Department
+                <input name="department" value={form.department} onChange={handleFieldChange} className={textInputClass} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                University
+                <input name="university" value={form.university} onChange={handleFieldChange} className={textInputClass} />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => saveProfile('Personal details updated.')}
+              disabled={saving}
+              className="mt-7 rounded-xl bg-[#0c56d0] px-6 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {saving ? 'Saving...' : 'Save Personal Info'}
+            </button>
+          </div>
+        ) : null}
+
+        {!loading && activeTab === 'contact' ? (
+          <div>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.04em]">Contact Information</h2>
+            <p className="mt-2 text-[15px] text-[#546067]">Update your primary contact and emergency details.</p>
+            <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2">
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Email
+                <input name="email" value={form.email} readOnly className={`${textInputClass} cursor-not-allowed opacity-80`} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Phone
+                <input name="phone" value={form.phone} onChange={handleFieldChange} className={textInputClass} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary md:col-span-2">
+                Address
+                <textarea name="address" rows="3" value={form.address} onChange={handleFieldChange} className={textInputClass} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Emergency Contact Name
+                <input name="name" value={form.emergencyContact.name} onChange={handleEmergencyChange} className={textInputClass} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Emergency Contact Relation
+                <input name="relation" value={form.emergencyContact.relation} onChange={handleEmergencyChange} className={textInputClass} />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Emergency Contact Phone
+                <input name="phone" value={form.emergencyContact.phone} onChange={handleEmergencyChange} className={textInputClass} />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => saveProfile('Contact information updated.')}
+              disabled={saving}
+              className="mt-7 rounded-xl bg-[#0c56d0] px-6 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {saving ? 'Saving...' : 'Save Contact Info'}
+            </button>
+          </div>
+        ) : null}
+
+        {!loading && activeTab === 'security' ? (
+          <div>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.04em]">Security</h2>
+            <p className="mt-2 text-[15px] text-[#546067]">Change your account password to keep your profile protected.</p>
+
+            <form className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2" onSubmit={handlePasswordSubmit}>
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary md:col-span-2">
+                Current Password
+                <input
+                  type="password"
+                  name="oldPassword"
+                  value={passwordForm.oldPassword}
+                  onChange={handlePasswordChange}
+                  className={textInputClass}
+                  required
+                />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                New Password
+                <input
+                  type="password"
+                  name="newPassword"
+                  value={passwordForm.newPassword}
+                  onChange={handlePasswordChange}
+                  className={textInputClass}
+                  required
+                />
+              </label>
+
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                Confirm New Password
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={passwordForm.confirmPassword}
+                  onChange={handlePasswordChange}
+                  className={textInputClass}
+                  required
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={passwordSaving}
+                className="rounded-xl bg-[#0c56d0] px-6 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70 md:col-span-2 md:w-fit"
+              >
+                {passwordSaving ? 'Updating...' : 'Update Password'}
+              </button>
+            </form>
+
+            {passwordMessage ? <p className="mt-5 rounded-xl bg-[#ecf7ef] px-4 py-3 text-sm font-semibold text-[#1f7a49]">{passwordMessage}</p> : null}
+            {passwordError ? <p className="mt-5 rounded-xl bg-[#feecef] px-4 py-3 text-sm font-semibold text-[#c52424]">{passwordError}</p> : null}
+          </div>
+        ) : null}
+
+        {!loading && activeTab === 'notifications' ? (
+          <div>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.04em]">Notification Preferences</h2>
+            <p className="mt-2 text-[15px] text-[#546067]">Choose how we should notify you about applications and support updates.</p>
+
+            <div className="mt-7 space-y-4">
+              {[
+                ['emailNotifications', 'Email Notifications'],
+                ['pushNotifications', 'Push Notifications'],
+                ['smsNotifications', 'SMS Alerts'],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center justify-between rounded-[18px] bg-[#f7f4f3] px-5 py-4">
+                  <span className="text-[15px] font-semibold text-[#2a2a2a]">{label}</span>
+                  <input type="checkbox" name={key} checked={Boolean(form.settings[key])} onChange={handleSettingChange} className="h-5 w-5 accent-[#0c56d0]" />
+                </label>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => saveProfile('Notification preferences updated.')}
+              disabled={saving}
+              className="mt-7 rounded-xl bg-[#0c56d0] px-6 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {saving ? 'Saving...' : 'Save Notification Preferences'}
+            </button>
+          </div>
+        ) : null}
+
+        {!loading && activeTab === 'privacy' ? (
+          <div>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.04em]">Privacy &amp; Data</h2>
+            <p className="mt-2 text-[15px] text-[#546067]">Export your profile information or request account actions.</p>
+
+            <div className="mt-7 flex flex-wrap gap-4">
+              <button
+                type="button"
+                onClick={exportProfileData}
+                className="rounded-xl border border-[#cfd6df] bg-white px-6 py-3 text-sm font-bold text-[#2a2a2a] transition hover:bg-[#f7f4f3]"
+              >
+                Export Profile Data
+              </button>
+              <button
+                type="button"
+                onClick={showDeactivateNotice}
+                className="rounded-xl bg-[#f9dede] px-6 py-3 text-sm font-bold text-[#c52424] transition hover:bg-[#f7cccc]"
+              >
+                Request Deactivation
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </section>
     </PageFrame>
   )
 }
 
 function SupportPage() {
-  const tickets = [
-    ['#SR-9421', 'Leaking pipe in Room 402B', "Hi Admin, I noticed a leak under the bathroom sink this morning. It's starting to pool...", 'Elena Rodriguez', '2 min ago', 'urgent'],
-    ['#SR-9418', 'WiFi signal strength issues', "My internet connection has been very unstable since the storm yesterday. I can't even...", 'Julian Chen', '1 hour ago', ''],
-    ['#SR-9415', 'Guest request for Saturday', 'I would like to host a friend from another university this Saturday. What is the process for...', 'Amara Okafor', '4 hours ago', ''],
-    ['#SR-9402', 'Gym card not working', 'Mark Thompson', 'Mark Thompson', 'Yesterday', 'resolved'],
-  ]
+  const { token } = useAuth()
+  const isDemoUser = token === 'dormdoor_demo_token'
+  const demoStorageKey = 'dormdoor_demo_student_support'
+
+  const initialTicket = {
+    subject: '',
+    description: '',
+    priority: 'Medium',
+  }
+
+  const [tickets, setTickets] = useState([])
+  const [ticketForm, setTicketForm] = useState(initialTicket)
+  const [activeTicketId, setActiveTicketId] = useState('')
+  const [reply, setReply] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [sendingReply, setSendingReply] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const parseDemoTickets = () => {
+    try {
+      const raw = localStorage.getItem(demoStorageKey)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  const seedDemoTickets = () => {
+    return [
+      {
+        _id: 'demo-support-1',
+        subject: 'Leaking pipe in Room 402B',
+        description: 'Leak under bathroom sink started this morning.',
+        priority: 'High',
+        status: 'Open',
+        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        messages: [
+          {
+            sender: { name: 'Demo Student', role: 'student' },
+            text: 'Leak under bathroom sink started this morning.',
+            createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          },
+          {
+            sender: { name: 'Dorm Admin', role: 'admin' },
+            text: 'Thanks for reporting. Maintenance staff will visit shortly.',
+            createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+      {
+        _id: 'demo-support-2',
+        subject: 'WiFi signal strength issues',
+        description: 'Signal drops every evening near study desk.',
+        priority: 'Medium',
+        status: 'Open',
+        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        messages: [
+          {
+            sender: { name: 'Demo Student', role: 'student' },
+            text: 'Signal drops every evening near study desk.',
+            createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+    ]
+  }
+
+  const fetchTickets = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const stored = parseDemoTickets()
+        const next = stored || seedDemoTickets()
+        if (!stored) {
+          localStorage.setItem(demoStorageKey, JSON.stringify(next))
+        }
+        setTickets(next)
+        if (next.length && !activeTicketId) {
+          setActiveTicketId(next[0]._id)
+        }
+        return
+      }
+
+      const { data } = await api.get('/support')
+      const list = data.tickets || []
+      setTickets(list)
+      if (list.length && !activeTicketId) {
+        setActiveTicketId(list[0]._id)
+      }
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to load support tickets')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTickets()
+  }, [isDemoUser, token])
+
+  const activeTicket = useMemo(() => {
+    if (!tickets.length) return null
+    return tickets.find((ticket) => ticket._id === activeTicketId) || tickets[0]
+  }, [tickets, activeTicketId])
+
+  const handleTicketChange = (event) => {
+    const { name, value } = event.target
+    setTicketForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleCreateTicket = async (event) => {
+    event.preventDefault()
+    if (!ticketForm.subject.trim() || !ticketForm.description.trim()) {
+      setError('Subject and description are required.')
+      return
+    }
+
+    setSubmitting(true)
+    setMessage('')
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const now = new Date().toISOString()
+        const created = {
+          _id: `demo-support-${Date.now()}`,
+          subject: ticketForm.subject.trim(),
+          description: ticketForm.description.trim(),
+          priority: ticketForm.priority,
+          status: 'Open',
+          createdAt: now,
+          updatedAt: now,
+          messages: [
+            {
+              sender: { name: 'Demo Student', role: 'student' },
+              text: ticketForm.description.trim(),
+              createdAt: now,
+            },
+          ],
+        }
+
+        const next = [created, ...tickets]
+        setTickets(next)
+        setActiveTicketId(created._id)
+        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+      } else {
+        await api.post('/support', {
+          subject: ticketForm.subject.trim(),
+          description: ticketForm.description.trim(),
+          priority: ticketForm.priority,
+        })
+        await fetchTickets()
+      }
+
+      setTicketForm(initialTicket)
+      setMessage('Support ticket created successfully.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to create support ticket')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleSendReply = async (event) => {
+    event.preventDefault()
+    if (!activeTicket?._id || !reply.trim()) {
+      return
+    }
+
+    setSendingReply(true)
+    setMessage('')
+    setError('')
+
+    try {
+      if (isDemoUser) {
+        const now = new Date().toISOString()
+        const next = tickets.map((ticket) => {
+          if (ticket._id !== activeTicket._id) return ticket
+          return {
+            ...ticket,
+            updatedAt: now,
+            messages: [
+              ...(ticket.messages || []),
+              {
+                sender: { name: 'Demo Student', role: 'student' },
+                text: reply.trim(),
+                createdAt: now,
+              },
+            ],
+          }
+        })
+
+        setTickets(next)
+        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+      } else {
+        await api.post(`/support/${activeTicket._id}/messages`, { text: reply.trim() })
+        await fetchTickets()
+      }
+
+      setReply('')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to send reply')
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
+  const statusClass = (status) => {
+    if (status === 'Resolved') return 'bg-[#eaf7ee] text-[#23945b]'
+    if (status === 'Open') return 'bg-[#eef0ff] text-[#4a5fd2]'
+    return 'bg-[#fff2de] text-[#b7791f]'
+  }
+
+  const formatDateTime = (value) => {
+    if (!value) return 'N/A'
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return 'N/A'
+    return parsed.toLocaleString()
+  }
 
   return (
     <PageFrame placeholder="Search support tickets...">
-      <div className="grid grid-cols-[360px_1fr_320px] gap-0 overflow-hidden rounded-[30px] bg-white shadow-[0_6px_18px_rgba(0,0,0,0.04)] ring-1 ring-[#eeebea]">
-        <section className="border-r border-[#efebea]">
-          <div className="flex items-center justify-between px-6 py-6"><h2 className="text-[28px] font-extrabold tracking-[-0.05em]">Inbox</h2><span className="live-pill rounded-full bg-[#0c56d0] px-4 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-white">12 New</span></div>
-          <div className="flex gap-3 px-6 pb-5"><button className="interactive rounded-full bg-[#0c56d0] px-5 py-2 text-[14px] font-bold text-white">All Tickets</button><button className="rounded-full bg-[#f3efed] px-5 py-2 text-[14px] text-[#5f6772]">Pending</button><button className="rounded-full bg-[#f3efed] px-5 py-2 text-[14px] text-[#5f6772]">Resolved</button></div>
-          <div>
-            {tickets.map((t, i) => (
-              <div key={t[0]} className={`border-t border-[#efebea] px-6 py-5 ${i === 0 ? 'border-l-4 border-l-[#0c56d0] bg-[#fff]' : 'bg-white'}`}>
-                <div className="flex items-center justify-between"><p className="text-[14px] font-bold text-[#0c56d0]">{t[0]}</p><span className="text-[13px] text-[#7b818c]">{t[4]}</span></div>
-                <h3 className="mt-3 text-[18px] font-extrabold tracking-[-0.04em]">{t[1]}</h3>
-                <p className="mt-2 text-[14px] leading-7 text-[#546067]">{t[2]}</p>
-                <div className="mt-4 flex items-center justify-between"><div className="flex items-center gap-3"><Avatar src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=80&q=80" className="h-10 w-10" /><span className="text-[14px]">{t[3]}</span></div>{t[5] === 'urgent' ? <span className="rounded-full bg-[#fff2de] px-3 py-1 text-[11px] font-bold text-[#b7791f]">URGENT</span> : t[5] === 'resolved' ? <span className="rounded-full bg-[#eaf7ee] px-3 py-1 text-[11px] font-bold text-[#23945b]">RESOLVED</span> : null}</div>
+      <h1 className="text-[42px] font-extrabold tracking-[-0.06em]">Support Center</h1>
+      <p className="mt-3 max-w-[880px] text-[16px] leading-8 text-[#546067]">
+        Open a support ticket and chat directly with the housing administration team.
+      </p>
+
+      {message ? <p className="mt-6 rounded-lg bg-[#ecf7ef] px-4 py-3 text-sm font-semibold text-[#23945b]">{message}</p> : null}
+      {error ? <p className="mt-6 rounded-lg bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
+
+      <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">Create Ticket</h2>
+          <form className="mt-6 space-y-4" onSubmit={handleCreateTicket}>
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Subject
+              <input
+                name="subject"
+                value={ticketForm.subject}
+                onChange={handleTicketChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                required
+              />
+            </label>
+
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Description
+              <textarea
+                name="description"
+                rows="4"
+                value={ticketForm.description}
+                onChange={handleTicketChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                required
+              />
+            </label>
+
+            <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+              Priority
+              <select
+                name="priority"
+                value={ticketForm.priority}
+                onChange={handleTicketChange}
+                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </label>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:opacity-70"
+            >
+              {submitting ? 'Opening...' : 'Open Ticket'}
+            </button>
+          </form>
+
+          <div className="mt-8 border-t border-[#efebea] pt-6">
+            <h3 className="text-[18px] font-extrabold">My Tickets</h3>
+            {loading ? (
+              <p className="mt-3 text-sm text-[#6b7280]">Loading tickets...</p>
+            ) : tickets.length === 0 ? (
+              <p className="mt-3 rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No tickets available.</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {tickets.map((ticket) => (
+                  <button
+                    key={ticket._id}
+                    type="button"
+                    onClick={() => setActiveTicketId(ticket._id)}
+                    className={`w-full rounded-[18px] p-4 text-left ring-1 transition ${
+                      activeTicket?._id === ticket._id
+                        ? 'bg-[#eef3ff] ring-[#c9d8ff]'
+                        : 'bg-[#f7f4f3] ring-transparent hover:ring-[#efebea]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-[15px] font-bold">{ticket.subject}</p>
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-bold ${statusClass(ticket.status)}`}>
+                        {ticket.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[12px] text-[#6b7280]">Priority: {ticket.priority} - Updated: {formatDateTime(ticket.updatedAt || ticket.createdAt)}</p>
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         </section>
 
-        <section className="border-r border-[#efebea] bg-[#fcfbfb]">
-          <div className="flex items-center justify-between px-7 py-6"><div><h2 className="text-[22px] font-extrabold leading-tight tracking-[-0.04em]">Elena<br />Rodriguez</h2><p className="mt-1 text-[14px] text-[#7b818c]">Room 402B • Third Year<br />Architecture</p></div><div className="flex gap-3"><button className="rounded-2xl border border-[#e3dfdd] px-5 py-3 text-[14px] font-bold">View History</button><button className="rounded-2xl bg-[#10a56b] px-5 py-3 text-[14px] font-bold text-white">Mark Resolved</button></div></div>
-          <p className="px-7 text-center text-[12px] font-bold uppercase tracking-[0.28em] text-[#94a3b8]">October 24, 2023</p>
-          <div className="space-y-6 px-7 py-6">
-            <div className="max-w-[360px] rounded-[24px] bg-[#f1eceb] p-5 text-[16px] leading-8 text-[#2f2f2f]">
-              Hi Admin, I noticed a leak under the bathroom sink this morning. It's starting to pool on the floor and I'm worried it might damage my belongings or leak into the room below.
-              <div className="mt-4 grid grid-cols-2 gap-3"><img className="h-24 w-full rounded-2xl object-cover" src="https://images.unsplash.com/photo-1585704032915-c3400ca199e7?auto=format&fit=crop&w=400&q=80" alt="leak" /><div className="flex h-24 items-center justify-center rounded-2xl bg-[#dfe5ea] text-[#7b818c]"><Icon name="image" className="text-[24px]" /></div></div>
-            </div>
-            <p className="text-[13px] text-[#7b818c]">09:12 AM</p>
-            <div className="ml-auto max-w-[380px] rounded-[24px] border border-[#cfe0ff] bg-[#eaf2ff] p-5 text-[16px] leading-8 text-[#1f4cb7]">Hello Elena, thank you for bringing this to our attention. I've flagged this as urgent for the maintenance team. Is someone currently in the room to let them in, or should we use the master key?</div>
-            <p className="text-right text-[13px] text-[#7b818c]">09:15 AM • Seen</p>
-            <div className="max-w-[360px] rounded-[24px] bg-[#f1eceb] p-5 text-[16px] leading-8 text-[#2f2f2f]">I have a lecture in 10 minutes, so please use the master key. I've placed a towel under the leak for now. Thanks!</div>
-            <p className="text-[13px] text-[#7b818c]">09:18 AM</p>
-          </div>
-          <div className="border-t border-[#efebea] p-6">
-            <div className="rounded-[24px] bg-[#f5f2f1] p-5">
-              <textarea rows="4" className="w-full resize-none bg-transparent text-[16px] outline-none placeholder:text-[#9aa3ae]" placeholder="Type your reply here..." />
-              <div className="mt-4 flex items-end justify-between gap-4"><div className="flex gap-4 text-[#6b7280]"><Icon name="attach_file" /><Icon name="image" /><Icon name="sentiment_satisfied" /></div><button type="button" className="interactive rounded-[18px] bg-[#0c56d0] px-7 py-4 text-[16px] font-bold text-white shadow-[0_12px_20px_rgba(12,86,208,0.14)]">Send Message</button></div>
-            </div>
-          </div>
+        <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
+          <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">Conversation</h2>
+          {!activeTicket ? (
+            <p className="mt-5 rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">Select a ticket to view details.</p>
+          ) : (
+            <>
+              <div className="mt-5 rounded-[20px] bg-[#f7f4f3] p-5">
+                <p className="text-[18px] font-extrabold">{activeTicket.subject}</p>
+                <p className="mt-2 text-[14px] text-[#546067]">{activeTicket.description}</p>
+                <div className="mt-4 flex flex-wrap items-center gap-3 text-[12px] font-semibold text-[#6b7280]">
+                  <span className={`rounded-full px-3 py-1 ${statusClass(activeTicket.status)}`}>{activeTicket.status}</span>
+                  <span>Priority: {activeTicket.priority}</span>
+                </div>
+              </div>
+
+              <div className="mt-6 max-h-[340px] space-y-4 overflow-auto pr-2">
+                {(activeTicket.messages || []).map((item, index) => {
+                  const isAdmin = item.sender?.role === 'admin'
+                  return (
+                    <div
+                      key={`${item.createdAt || index}-${index}`}
+                      className={`max-w-[92%] rounded-[18px] px-4 py-3 ${
+                        isAdmin ? 'bg-[#eaf2ff] text-[#1f4cb7]' : 'ml-auto bg-[#f1ecea] text-[#2f2f2f]'
+                      }`}
+                    >
+                      <p className="text-[12px] font-bold uppercase tracking-[0.08em]">
+                        {item.sender?.name || (isAdmin ? 'Admin' : 'Student')}
+                      </p>
+                      <p className="mt-2 text-[14px] leading-7">{item.text}</p>
+                      <p className="mt-2 text-[11px] opacity-75">{formatDateTime(item.createdAt)}</p>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <form className="mt-6" onSubmit={handleSendReply}>
+                <textarea
+                  rows="4"
+                  value={reply}
+                  onChange={(event) => setReply(event.target.value)}
+                  placeholder="Type your reply here..."
+                  className="w-full resize-none rounded-[18px] bg-[#f5f2f1] p-4 text-[15px] outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={sendingReply || !reply.trim()}
+                  className="mt-4 rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:opacity-70"
+                >
+                  {sendingReply ? 'Sending...' : 'Send Reply'}
+                </button>
+              </form>
+            </>
+          )}
         </section>
-
-        <aside className="bg-[#faf9f9] p-7">
-          <div>
-            <p className="text-[12px] font-bold uppercase tracking-[0.24em] text-[#94a3b8]">Ticket Info</p>
-            <div className="mt-5 space-y-5 text-[16px]"><div><p className="text-[14px] text-[#7b818c]">Status</p><p className="mt-2 font-bold text-[#1c1b1b]">● Active Response</p></div><div><p className="text-[14px] text-[#7b818c]">Assigned To</p><div className="mt-3 flex items-center gap-3"><Avatar src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=80&q=80" className="h-10 w-10" /><span className="font-bold">David Wilson (Maint.)</span></div></div></div>
-          </div>
-
-          <div className="mt-10">
-            <p className="text-[12px] font-bold uppercase tracking-[0.24em] text-[#94a3b8]">Resident Profile</p>
-            <div className="mt-5 rounded-[24px] bg-white p-5 ring-1 ring-[#efebea] text-[14px]">
-              <div className="space-y-4"><div className="flex justify-between"><span className="text-[#7b818c]">Major</span><span className="font-bold">Architecture</span></div><div className="flex justify-between"><span className="text-[#7b818c]">Floor</span><span className="font-bold">4th Floor (West)</span></div><div className="flex justify-between"><span className="text-[#7b818c]">Contract Type</span><span className="font-bold">Full Academic Year</span></div><div className="flex justify-between"><span className="text-[#7b818c]">Trust Score</span><span className="font-bold text-[#eab308]">★★★★☆</span></div></div>
-            </div>
-          </div>
-
-          <div className="mt-10">
-            <p className="text-[12px] font-bold uppercase tracking-[0.24em] text-[#94a3b8]">Past Tickets</p>
-            <div className="mt-5 space-y-4">{[['SEPT 12, 2023', 'Air conditioning noise issue'], ['AUG 28, 2023', 'Missing laundry bag']].map((p) => <div key={p[0]} className="rounded-[22px] bg-white p-5 ring-1 ring-[#efebea]"><p className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#94a3b8]">{p[0]}</p><h4 className="mt-3 text-[16px] font-bold">{p[1]}</h4><p className="mt-3 text-[13px] font-bold text-[#23945b]">RESOLVED</p></div>)}</div>
-          </div>
-
-          <div className="mt-10 rounded-[22px] border border-[#cfdcf5] bg-[#f4f8ff] p-5 text-center text-[14px] leading-7 text-[#315db3]">Maintenance team has been dispatched and is estimated to arrive in 15 mins.</div>
-        </aside>
       </div>
     </PageFrame>
   )
@@ -1146,5 +2653,11 @@ export default function StudentPortal() {
     </div>
   )
 }
+
+
+
+
+
+
 
 

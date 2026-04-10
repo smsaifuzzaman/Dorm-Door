@@ -51,10 +51,6 @@ function Navbar({ buttonLabel = 'Login', buttonTo = '/login' }) {
             </button>
           </div>
 
-          <button className="hidden text-sm font-medium text-secondary transition hover:text-primary md:block">
-            Support
-          </button>
-
           <Link
             to={buttonTo}
             className="rounded-lg bg-gradient-to-br from-primary to-primary-container px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-105"

@@ -52,12 +52,17 @@ export const createRoom = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Dorm not found')
   }
 
-  const finalStatus = deriveStatus(Number(seatCount), Number(occupiedSeats), status)
+  const normalizedSeatCount = Math.max(1, Number(seatCount) || 1)
+  const normalizedOccupiedSeats = Math.max(
+    0,
+    Math.min(Number(occupiedSeats) || 0, normalizedSeatCount),
+  )
+  const finalStatus = deriveStatus(normalizedSeatCount, normalizedOccupiedSeats, status)
 
   const room = await Room.create({
     ...req.body,
-    seatCount: Number(seatCount),
-    occupiedSeats: Number(occupiedSeats),
+    seatCount: normalizedSeatCount,
+    occupiedSeats: normalizedOccupiedSeats,
     status: finalStatus,
     roomNumber,
   })

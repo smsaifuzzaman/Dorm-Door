@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Bath,
@@ -22,136 +22,170 @@ import {
 } from 'lucide-react'
 import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
+import { api } from '../../../api/client'
 
-const stats = [
-  {
-    title: 'Total Dorms',
-    value: '12 Buildings',
-    tag: 'Active',
-    tagClass: 'text-emerald-600 bg-emerald-50',
-    icon: Building,
-    iconWrap: 'bg-blue-50 text-blue-700',
-  },
-  {
-    title: 'Total Rooms',
-    value: '482 Units',
-    icon: DoorClosed,
-    iconWrap: 'bg-indigo-50 text-indigo-700',
-  },
-  {
-    title: 'Available Now',
-    value: '54 Rooms',
-    tag: '88% Occ.',
-    tagClass: 'text-primary',
-    icon: CheckCircle2,
-    iconWrap: 'bg-emerald-50 text-emerald-700',
-  },
-  {
-    title: 'Under Maintenance',
-    value: '08 Rooms',
-    icon: Wrench,
-    iconWrap: 'bg-amber-50 text-amber-700',
-  },
-]
-
-const roomRows = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuBV1NdVHs21TFIs9DTN4RXaZn7jODbTNz0Ob4r0Bmv0sUcuhtS1BrQmffSHHXEW4vlOHuMxTOnfhRe9COly0TVuZyIYrlHc1n3I3w9X2gXyCwwbdJRnQKpaottbWPhyDMwkic8K48PvlTHGgI1JYPEKMSmqC0q6BPlTJMNkxaGUYy53bCd-hFJToY4eordHsz-uVJsA7sEIsZHN8pUJodk4c0gQ0BML4jbxIa75AXIUIarMVWwiD_yvYnUQbVG40fjMnYjB9kC_ijWR',
-    dorm: 'The Grand Atelier',
-    block: 'Block A',
-    floor: 'Floor 4',
-    room: 'Room 402-B',
-    type: 'Studio Premium',
-    facilities: [Wifi, Snowflake, Tv],
-    price: 'BDT 12,500',
-    priceValue: 12500,
-    priceSub: 'per month',
-    status: 'Available',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAnyYhXSAOBjWoNrkjVB6JVoORXOjG_tdbAyqkbKfeaKwe-2HCl4GTaomz1NF-4cgNfTuh0X5fj89reZAX4RR6DUSvTka0fZWg72R91AvQCXAXtJB5FiSHqPnC12w3IiAU6S9D0wc2KT4YD5VnlQABaRnpcMb29mT378O8OQNbF2Ht7dG4sh3Xt6n4hBuiFE-4jgK3WGUgn-LLOAXcVurQSn4W3UpvygyBCIjN0mi73Toe2hyEokJ_aiXbLvTqRwoNv_GrYosWTLuqN',
-    dorm: 'North Wing Sanctuary',
-    block: 'Block C',
-    floor: 'Floor 1',
-    room: 'Room 112-A',
-    type: 'Twin Shared',
-    facilities: [Wifi, CookingPot],
-    price: 'BDT 8,500',
-    priceValue: 8500,
-    priceSub: 'per month',
-    status: 'Occupied',
-    statusLabel: 'Occupied (Until Oct)',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCl3rb_VORWq7LmT0FZi0LwSAZTHUyHBirlqdnRU2g91KoFFiWtVCJxSfsjGRhc8JbY0IM58fVcAUwnNksOV7oWBwThuqg0ykqFH5Qa9MjmFKq2edD-39C4VCzO0_MYN-BVRls6DR8kvt01dyMSSOonrsc3m0NXukKHuJku8TacMB9pZjKuucZ_qEk1j_5-Tq-zFicSAdiulFwHTvdb23RvMIAGyuUIqRoqGDIfZIQ3wk-Wd12n2vwD0hvsQVqqGiwPSRuYv1XCfwWb',
-    dorm: 'The Grand Atelier',
-    block: 'Block A',
-    floor: 'Floor 2',
-    room: 'Room 205-C',
-    type: 'Triple Shared',
-    facilities: [Wifi, WashingMachine],
-    price: 'BDT 6,500',
-    priceValue: 6500,
-    priceSub: 'per month',
-    status: 'Maintenance',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuAzjhkvFwsNQ0NkAkOX7yK4sZ4t0B-rCRObE71ksB3AovgjuE1RqSBj4c8DDeSXtHMwkHa_ZV6LRR-Ba0xIfHtT03e1a3Jl5Io23ecFOlBPnjwE3Gj7-iAWbjFC-9ymtNVa3vyAZ_d2bLb9ePgrHtYlKF41LHY9tv4rPSTBAXe-TTnE52AqWqAV3Oh_alZfI_xOttknrTHTo25mttYRi_Us-7wK6mtjS8VHVtwD8SIqivIWST2tJWg2ejsZ_xoR3zZdnfUObM4JxUbk',
-    dorm: 'Skyline Suites',
-    block: 'Block D',
-    floor: 'Floor 12',
-    room: 'Suite 1201',
-    type: 'Executive Suite',
-    facilities: [Wifi, Snowflake, Tv, Bath],
-    price: 'BDT 21,000',
-    priceValue: 21000,
-    priceSub: 'per month',
-    status: 'Available',
-  },
-]
+const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=300&q=80'
 
 function getStatusStyle(status) {
-  if (status === 'Available') {
+  if (status === 'Open') {
     return {
       dot: 'bg-emerald-500',
       badge: 'bg-emerald-50 text-emerald-700 ring-emerald-700/10',
+      label: 'Open',
     }
   }
 
-  if (status === 'Maintenance') {
+  if (status === 'Limited') {
     return {
-      dot: 'bg-slate-500',
-      badge: 'bg-slate-100 text-slate-700 ring-slate-700/10',
+      dot: 'bg-amber-500',
+      badge: 'bg-amber-50 text-amber-700 ring-amber-700/10',
+      label: 'Limited',
+    }
+  }
+
+  if (status === 'Full') {
+    return {
+      dot: 'bg-blue-700',
+      badge: 'bg-blue-50 text-blue-700 ring-blue-700/10',
+      label: 'Full',
     }
   }
 
   return {
-    dot: 'bg-amber-500',
-    badge: 'bg-amber-50 text-amber-700 ring-amber-700/10',
+    dot: 'bg-slate-500',
+    badge: 'bg-slate-100 text-slate-700 ring-slate-700/10',
+    label: 'Maintenance',
   }
 }
 
+function mapAmenityIcons(amenities = []) {
+  const normalized = amenities.map((item) => String(item).toLowerCase())
+  const icons = []
+
+  if (normalized.some((item) => item.includes('wifi') || item.includes('internet'))) icons.push(Wifi)
+  if (normalized.some((item) => item.includes('ac') || item.includes('air'))) icons.push(Snowflake)
+  if (normalized.some((item) => item.includes('tv'))) icons.push(Tv)
+  if (normalized.some((item) => item.includes('bath'))) icons.push(Bath)
+  if (normalized.some((item) => item.includes('laundry') || item.includes('wash'))) icons.push(WashingMachine)
+  if (normalized.some((item) => item.includes('kitchen') || item.includes('dining') || item.includes('cook'))) icons.push(CookingPot)
+  if (normalized.some((item) => item.includes('maintenance'))) icons.push(Wrench)
+
+  if (!icons.length) icons.push(Wifi)
+  return icons.slice(0, 4)
+}
+
 function DormsPage() {
+  const [dorms, setDorms] = useState([])
+  const [rooms, setRooms] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [requestState, setRequestState] = useState('')
+  const [actionInFlightId, setActionInFlightId] = useState('')
+
   const [query, setQuery] = useState('')
   const [inventoryView, setInventoryView] = useState('all')
   const [selectedBlock, setSelectedBlock] = useState('All Blocks')
   const [selectedStatus, setSelectedStatus] = useState('All Statuses')
   const [sortBy, setSortBy] = useState('dorm')
 
+  const [editingRoomId, setEditingRoomId] = useState('')
+  const [editForm, setEditForm] = useState({
+    floor: '',
+    type: '',
+    seatCount: 1,
+    occupiedSeats: 0,
+    status: 'Open',
+    priceMonthly: 0,
+  })
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      const [{ data: dormData }, { data: roomData }] = await Promise.all([api.get('/dorms'), api.get('/rooms')])
+      setDorms(dormData.dorms || [])
+      setRooms(roomData.rooms || [])
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to load dorm and room data')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const roomRows = useMemo(() => {
+    return rooms.map((room) => ({
+      id: room._id,
+      image: room.images?.[0] || PLACEHOLDER_IMAGE,
+      dorm: room.dorm?.name || 'Dorm not assigned',
+      block: room.dorm?.block || 'Block N/A',
+      floor: room.floor || 'Floor N/A',
+      room: room.roomNumber || 'Unknown',
+      type: room.type || 'Unknown',
+      facilities: mapAmenityIcons(room.amenities),
+      price: `BDT ${room.priceMonthly || 0}`,
+      priceValue: Number(room.priceMonthly || 0),
+      priceSub: 'per month',
+      status: room.status || 'Open',
+      seatCount: Number(room.seatCount || 0),
+      occupiedSeats: Number(room.occupiedSeats || 0),
+    }))
+  }, [rooms])
+
+  const stats = useMemo(() => {
+    const totalSeats = rooms.reduce((sum, room) => sum + Number(room.seatCount || 0), 0)
+    const occupiedSeats = rooms.reduce((sum, room) => sum + Number(room.occupiedSeats || 0), 0)
+    const availableRooms = rooms.filter((room) => (Number(room.seatCount || 0) - Number(room.occupiedSeats || 0)) > 0).length
+    const maintenanceRooms = rooms.filter((room) => room.status === 'Maintenance').length
+    const occupancyRate = totalSeats === 0 ? 0 : Math.round((occupiedSeats / totalSeats) * 100)
+
+    return [
+      {
+        title: 'Total Dorms',
+        value: `${dorms.length} Buildings`,
+        tag: 'Active',
+        tagClass: 'text-emerald-600 bg-emerald-50',
+        icon: Building,
+        iconWrap: 'bg-blue-50 text-blue-700',
+      },
+      {
+        title: 'Total Rooms',
+        value: `${rooms.length} Units`,
+        icon: DoorClosed,
+        iconWrap: 'bg-indigo-50 text-indigo-700',
+      },
+      {
+        title: 'Available Now',
+        value: `${availableRooms} Rooms`,
+        tag: `${occupancyRate}% Occ.`,
+        tagClass: 'text-primary',
+        icon: CheckCircle2,
+        iconWrap: 'bg-emerald-50 text-emerald-700',
+      },
+      {
+        title: 'Under Maintenance',
+        value: `${maintenanceRooms} Rooms`,
+        icon: Wrench,
+        iconWrap: 'bg-amber-50 text-amber-700',
+      },
+    ]
+  }, [dorms.length, rooms])
+
   const blockOptions = useMemo(() => {
     return ['All Blocks', ...new Set(roomRows.map((row) => row.block))]
-  }, [])
+  }, [roomRows])
 
   const filteredRows = useMemo(() => {
     const search = query.trim().toLowerCase()
     const statusPriority = {
-      Available: 0,
-      Occupied: 1,
-      Maintenance: 2,
+      Open: 0,
+      Limited: 1,
+      Full: 2,
+      Maintenance: 3,
     }
 
     let rows = roomRows.filter((row) => {
@@ -167,11 +201,8 @@ function DormsPage() {
         (inventoryView === 'maintenance' && row.status === 'Maintenance') ||
         inventoryView === 'block'
 
-      const matchesBlock =
-        selectedBlock === 'All Blocks' || row.block === selectedBlock
-
-      const matchesStatus =
-        selectedStatus === 'All Statuses' || row.status === selectedStatus
+      const matchesBlock = selectedBlock === 'All Blocks' || row.block === selectedBlock
+      const matchesStatus = selectedStatus === 'All Statuses' || row.status === selectedStatus
 
       return matchesSearch && matchesView && matchesBlock && matchesStatus
     })
@@ -185,7 +216,7 @@ function DormsPage() {
     })
 
     return rows
-  }, [inventoryView, query, selectedBlock, selectedStatus, sortBy])
+  }, [inventoryView, query, roomRows, selectedBlock, selectedStatus, sortBy])
 
   const resetFilters = () => {
     setQuery('')
@@ -193,6 +224,101 @@ function DormsPage() {
     setSelectedBlock('All Blocks')
     setSelectedStatus('All Statuses')
     setSortBy('dorm')
+  }
+
+  const exportCsv = () => {
+    const header = ['Dorm', 'Block', 'Floor', 'Room', 'Type', 'Status', 'Seat Count', 'Occupied Seats', 'Price Monthly']
+    const body = filteredRows.map((row) => [
+      row.dorm,
+      row.block,
+      row.floor,
+      row.room,
+      row.type,
+      row.status,
+      String(row.seatCount),
+      String(row.occupiedSeats),
+      String(row.priceValue),
+    ])
+
+    const csv = [header, ...body]
+      .map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = 'dormdoor-room-inventory.csv'
+    link.click()
+    URL.revokeObjectURL(link.href)
+  }
+
+  const openEditModal = (row) => {
+    setEditingRoomId(row.id)
+    setEditForm({
+      floor: row.floor,
+      type: row.type,
+      seatCount: row.seatCount,
+      occupiedSeats: row.occupiedSeats,
+      status: row.status,
+      priceMonthly: row.priceValue,
+    })
+    setRequestState('')
+  }
+
+  const closeEditModal = () => {
+    setEditingRoomId('')
+    setRequestState('')
+  }
+
+  const updateEditField = (field, value) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  const handleRoomUpdate = async (event) => {
+    event.preventDefault()
+    if (!editingRoomId) return
+
+    const nextSeatCount = Math.max(1, Number(editForm.seatCount || 1))
+    const nextOccupiedSeats = Math.max(0, Math.min(Number(editForm.occupiedSeats || 0), nextSeatCount))
+
+    setActionInFlightId(editingRoomId)
+    setRequestState('')
+
+    try {
+      await api.patch(`/rooms/${editingRoomId}`, {
+        floor: editForm.floor,
+        type: editForm.type,
+        seatCount: nextSeatCount,
+        occupiedSeats: nextOccupiedSeats,
+        status: editForm.status,
+        priceMonthly: Number(editForm.priceMonthly || 0),
+      })
+      setRequestState('Room updated successfully.')
+      await loadData()
+      setTimeout(() => closeEditModal(), 400)
+    } catch (requestError) {
+      setRequestState(requestError.response?.data?.message || 'Failed to update room.')
+    } finally {
+      setActionInFlightId('')
+    }
+  }
+
+  const handleRoomDelete = async (roomId, roomLabel) => {
+    const confirmed = window.confirm(`Delete room ${roomLabel}? This action cannot be undone.`)
+    if (!confirmed) return
+
+    setActionInFlightId(roomId)
+    setRequestState('')
+
+    try {
+      await api.delete(`/rooms/${roomId}`)
+      await loadData()
+      setRequestState(`Room ${roomLabel} deleted successfully.`)
+    } catch (requestError) {
+      setRequestState(requestError.response?.data?.message || 'Failed to delete room.')
+    } finally {
+      setActionInFlightId('')
+    }
   }
 
   return (
@@ -230,6 +356,13 @@ function DormsPage() {
           </div>
         </div>
 
+        {error ? (
+          <p className="mb-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p>
+        ) : null}
+        {requestState ? (
+          <p className="mb-6 rounded-xl bg-[#e8f0f7] px-4 py-3 text-sm font-semibold text-[#4e6875]">{requestState}</p>
+        ) : null}
+
         <div className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-4">
           {stats.map((stat) => {
             const StatIcon = stat.icon
@@ -246,7 +379,7 @@ function DormsPage() {
                   ) : null}
                 </div>
                 <p className="mb-1 text-sm text-secondary">{stat.title}</p>
-                <p className="text-2xl font-bold">{stat.value}</p>
+                <p className="text-2xl font-bold">{loading ? '...' : stat.value}</p>
               </div>
             )
           })}
@@ -297,7 +430,11 @@ function DormsPage() {
               >
                 <Filter size={16} /> Reset Filters
               </button>
-              <button className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-secondary">
+              <button
+                type="button"
+                onClick={exportCsv}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-secondary"
+              >
                 <Download size={16} /> Export CSV
               </button>
             </div>
@@ -333,7 +470,7 @@ function DormsPage() {
               onChange={(event) => setSelectedStatus(event.target.value)}
               className="rounded-lg border border-[#ece7e4] bg-white px-4 py-2.5 text-sm outline-none focus:border-primary"
             >
-              {['All Statuses', 'Available', 'Occupied', 'Maintenance'].map((status) => (
+              {['All Statuses', 'Open', 'Limited', 'Full', 'Maintenance'].map((status) => (
                 <option key={status} value={status}>
                   {status}
                 </option>
@@ -370,7 +507,13 @@ function DormsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.length === 0 ? (
+                {loading ? (
+                  <tr className="border-t border-[#f0ebea]">
+                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-secondary">
+                      Loading room inventory...
+                    </td>
+                  </tr>
+                ) : filteredRows.length === 0 ? (
                   <tr className="border-t border-[#f0ebea]">
                     <td colSpan={6} className="px-6 py-10 text-center text-sm text-secondary">
                       No rooms match the selected filters.
@@ -380,7 +523,7 @@ function DormsPage() {
                   filteredRows.map((row) => {
                     const statusStyle = getStatusStyle(row.status)
                     return (
-                      <tr key={row.room} className="border-t border-[#f0ebea]">
+                      <tr key={row.id} className="border-t border-[#f0ebea]">
                         <td className="px-6 py-5">
                           <div className="flex items-center gap-4">
                             <img src={row.image} alt={row.dorm} className="h-14 w-14 rounded-xl object-cover" />
@@ -416,15 +559,24 @@ function DormsPage() {
                             className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-semibold ring-1 ${statusStyle.badge}`}
                           >
                             <span className={`h-2.5 w-2.5 rounded-full ${statusStyle.dot}`} />
-                            {row.statusLabel || row.status}
+                            {statusStyle.label}
                           </span>
                         </td>
                         <td className="px-6 py-5">
                           <div className="flex gap-2">
-                            <button className="rounded-lg p-2 text-primary hover:bg-blue-50">
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(row)}
+                              className="rounded-lg p-2 text-primary hover:bg-blue-50"
+                            >
                               <PencilLine size={16} />
                             </button>
-                            <button className="rounded-lg p-2 text-red-600 hover:bg-red-50">
+                            <button
+                              type="button"
+                              onClick={() => handleRoomDelete(row.id, row.room)}
+                              disabled={actionInFlightId === row.id}
+                              className="rounded-lg p-2 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
                               <Trash2 size={16} />
                             </button>
                           </div>
@@ -441,13 +593,13 @@ function DormsPage() {
               Showing {filteredRows.length} of {roomRows.length} rooms
             </p>
             <div className="flex items-center gap-2">
-              <button className="rounded-lg p-2 hover:bg-[#f2efee]">
+              <button type="button" className="rounded-lg p-2 hover:bg-[#f2efee]">
                 <ChevronLeft size={16} />
               </button>
-              <button className="rounded-lg bg-primary px-3 py-2 text-white">1</button>
-              <button className="rounded-lg px-3 py-2 hover:bg-[#f2efee]">2</button>
-              <button className="rounded-lg px-3 py-2 hover:bg-[#f2efee]">3</button>
-              <button className="rounded-lg p-2 hover:bg-[#f2efee]">
+              <button type="button" className="rounded-lg bg-primary px-3 py-2 text-white">1</button>
+              <button type="button" className="rounded-lg px-3 py-2 hover:bg-[#f2efee]">2</button>
+              <button type="button" className="rounded-lg px-3 py-2 hover:bg-[#f2efee]">3</button>
+              <button type="button" className="rounded-lg p-2 hover:bg-[#f2efee]">
                 <ChevronRight size={16} />
               </button>
             </div>
@@ -460,32 +612,130 @@ function DormsPage() {
               Maximize your capacity with Smart Allocation.
             </h3>
             <p className="mt-5 max-w-2xl text-lg text-white/85">
-              Our AI-driven system suggests optimal room pricing based on market trends and campus demand.
-              Update your rates in one click.
+              Our system gives you real-time occupancy visibility so you can adjust pricing and room allocation faster.
             </p>
-            <button className="mt-8 rounded-2xl bg-white px-8 py-4 text-lg font-semibold text-primary">
-              Launch Price Optimizer
+            <button type="button" onClick={() => setSortBy('price-high')} className="mt-8 rounded-2xl bg-white px-8 py-4 text-lg font-semibold text-primary">
+              Prioritize Highest Value Rooms
             </button>
           </div>
           <div className="rounded-[2rem] bg-[#f2efee] p-8 lg:col-span-4">
             <h4 className="mb-6 text-[18px] font-extrabold">Quick Snapshot</h4>
             <ul className="space-y-6 text-secondary">
               <li>
-                <span className="block font-semibold text-[#1c1b1b]">Block A Renovation</span>
-                Completion scheduled for Sept 15, 2024.
+                <span className="block font-semibold text-[#1c1b1b]">Dorm Inventory</span>
+                {dorms.length} dorm buildings currently available in the system.
               </li>
               <li>
                 <span className="block font-semibold text-[#1c1b1b]">High Demand Alert</span>
-                Premium Studios in Block D are 100% booked.
+                {rooms.filter((room) => room.status === 'Full').length} rooms are currently full.
               </li>
               <li>
-                <span className="block font-semibold text-[#1c1b1b]">Policy Update</span>
-                New utility billing cycle starting next month.
+                <span className="block font-semibold text-[#1c1b1b]">Maintenance Watch</span>
+                {rooms.filter((room) => room.status === 'Maintenance').length} rooms need maintenance handling.
               </li>
             </ul>
           </div>
         </div>
       </div>
+
+      {editingRoomId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <form onSubmit={handleRoomUpdate} className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-2xl font-extrabold">Edit Room</h3>
+            <p className="mt-2 text-sm text-secondary">Update room details and seat availability.</p>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-secondary">
+                Floor
+                <input
+                  value={editForm.floor}
+                  onChange={(event) => updateEditField('floor', event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-secondary">
+                Room Type
+                <select
+                  value={editForm.type}
+                  onChange={(event) => updateEditField('type', event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
+                >
+                  {['Single Room', 'Double Room', 'Shared (4 Bed)', 'Studio Suite', 'Premium Studio'].map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="text-sm font-semibold text-secondary">
+                Seat Count
+                <input
+                  type="number"
+                  min="1"
+                  value={editForm.seatCount}
+                  onChange={(event) => updateEditField('seatCount', event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-secondary">
+                Occupied Seats
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.occupiedSeats}
+                  onChange={(event) => updateEditField('occupiedSeats', event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-secondary">
+                Monthly Price
+                <input
+                  type="number"
+                  min="0"
+                  value={editForm.priceMonthly}
+                  onChange={(event) => updateEditField('priceMonthly', event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
+                />
+              </label>
+
+              <label className="text-sm font-semibold text-secondary">
+                Status
+                <select
+                  value={editForm.status}
+                  onChange={(event) => updateEditField('status', event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
+                >
+                  {['Open', 'Limited', 'Full', 'Maintenance'].map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between">
+              {requestState ? <p className="text-sm font-semibold text-secondary">{requestState}</p> : <span />}
+              <div className="flex gap-3">
+                <button type="button" onClick={closeEditModal} className="rounded-lg px-4 py-2 font-semibold text-secondary hover:bg-[#f2efee]">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionInFlightId === editingRoomId}
+                  className="rounded-lg bg-primary px-5 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {actionInFlightId === editingRoomId ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </AdminLayout>
   )
 }

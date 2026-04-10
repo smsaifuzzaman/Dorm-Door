@@ -65,15 +65,39 @@ export const updateMaintenanceTicket = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'Not allowed to update this ticket')
   }
 
-  if (status) ticket.status = status
-  if (priority) ticket.priority = priority
-  if (assignedTo) ticket.assignedTo = assignedTo
+  const isAdmin = req.user.role === 'admin'
+  const normalizedMessage = String(message || '').trim()
+  let hasUpdates = false
 
-  if (message) {
+  if (!isAdmin && (status !== undefined || priority !== undefined || assignedTo !== undefined)) {
+    throw new ApiError(403, 'Students can only add message updates to maintenance tickets')
+  }
+
+  if (isAdmin && status !== undefined) {
+    ticket.status = status
+    hasUpdates = true
+  }
+
+  if (isAdmin && priority !== undefined) {
+    ticket.priority = priority
+    hasUpdates = true
+  }
+
+  if (isAdmin && assignedTo !== undefined) {
+    ticket.assignedTo = assignedTo || undefined
+    hasUpdates = true
+  }
+
+  if (normalizedMessage) {
     ticket.updates.push({
-      from: req.user.role === 'admin' ? 'admin' : 'student',
-      message,
+      from: isAdmin ? 'admin' : 'student',
+      message: normalizedMessage,
     })
+    hasUpdates = true
+  }
+
+  if (!hasUpdates) {
+    throw new ApiError(400, 'No valid updates provided')
   }
 
   await ticket.save()

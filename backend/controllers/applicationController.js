@@ -31,6 +31,10 @@ export const createApplication = asyncHandler(async (req, res) => {
     if (!roomDoc) {
       throw new ApiError(404, 'Room not found')
     }
+
+    if (String(roomDoc.dorm) !== String(dorm)) {
+      throw new ApiError(400, 'Selected room does not belong to the selected dorm')
+    }
   }
 
   const application = await Application.create({

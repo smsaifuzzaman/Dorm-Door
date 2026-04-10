@@ -23,20 +23,34 @@ const DEMO_USERS = {
   },
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
+
 function isDemoCredential(payload) {
-  if (!payload?.email || !payload?.password) return false
+  const email = normalizeEmail(payload?.email)
+  if (!email || !payload?.password) return false
   return (
-    (payload.email === 'student@dormdoor.com' && payload.password === 'Student123!') ||
-    (payload.email === 'admin@dormdoor.com' && payload.password === 'Admin123!')
+    (email === 'student@dormdoor.com' && payload.password === 'Student123!') ||
+    (email === 'admin@dormdoor.com' && payload.password === 'Admin123!')
   )
+}
+
+function loadStoredUser() {
+  const raw = localStorage.getItem(USER_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    localStorage.removeItem(USER_KEY)
+    return null
+  }
 }
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
-  const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem(USER_KEY)
-    return raw ? JSON.parse(raw) : null
-  })
+  const [user, setUser] = useState(() => loadStoredUser())
   const [loading, setLoading] = useState(Boolean(localStorage.getItem(TOKEN_KEY)))
 
   useEffect(() => {
@@ -69,19 +83,24 @@ export function AuthProvider({ children }) {
   }, [token])
 
   const login = async (payload) => {
+    const normalizedPayload = {
+      ...payload,
+      email: normalizeEmail(payload?.email),
+    }
+
     try {
-      const { data } = await api.post('/auth/login', payload)
+      const { data } = await api.post('/auth/login', normalizedPayload)
       localStorage.setItem(TOKEN_KEY, data.token)
       localStorage.setItem(USER_KEY, JSON.stringify(data.user))
       setToken(data.token)
       setUser(data.user)
       return data.user
     } catch (error) {
-      if (!isDemoCredential(payload)) {
+      if (!isDemoCredential(normalizedPayload)) {
         throw error
       }
 
-      const demoUser = DEMO_USERS[payload.email]
+      const demoUser = DEMO_USERS[normalizedPayload.email]
       localStorage.setItem(TOKEN_KEY, DEMO_TOKEN)
       localStorage.setItem(USER_KEY, JSON.stringify(demoUser))
       setToken(DEMO_TOKEN)
@@ -91,7 +110,12 @@ export function AuthProvider({ children }) {
   }
 
   const signup = async (payload) => {
-    const { data } = await api.post('/auth/signup', payload)
+    const normalizedPayload = {
+      ...payload,
+      email: normalizeEmail(payload?.email),
+    }
+
+    const { data } = await api.post('/auth/signup', normalizedPayload)
     localStorage.setItem(TOKEN_KEY, data.token)
     localStorage.setItem(USER_KEY, JSON.stringify(data.user))
     setToken(data.token)

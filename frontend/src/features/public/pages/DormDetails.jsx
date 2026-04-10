@@ -1,8 +1,38 @@
-import { Link } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import PageShell from '../components/PageShell'
-import { zenithSuite } from '../data/dormData'
+import { getDormDetailsById } from '../data/dormData'
 
 function DormDetails() {
+  const { id } = useParams()
+  const dorm = useMemo(() => getDormDetailsById(id), [id])
+
+  if (!dorm) {
+    return (
+      <PageShell buttonLabel="Browse Dorms" buttonTo="/browse-dorms">
+        <main className="mx-auto max-w-4xl px-6 pb-20 pt-32 md:px-8">
+          <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-10 text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-secondary">Dorm not found</p>
+            <h1 className="mt-3 text-4xl font-black tracking-tight text-on-surface">This listing is unavailable</h1>
+            <p className="mt-3 text-secondary">The dorm you opened may have been removed or moved to a different listing.</p>
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <Link to="/browse-dorms" className="rounded-lg bg-primary px-6 py-3 text-sm font-bold text-white">
+                Browse Dorms
+              </Link>
+              <Link to="/" className="rounded-lg border border-outline-variant/20 px-6 py-3 text-sm font-bold text-on-surface">
+                Back Home
+              </Link>
+            </div>
+          </div>
+        </main>
+      </PageShell>
+    )
+  }
+
+  const mainImage = dorm.gallery[0]
+  const galleryGrid = dorm.gallery.slice(1, 4)
+  const finalGalleryImage = dorm.gallery[4] || dorm.gallery[0]
+
   return (
     <PageShell buttonLabel="Login" buttonTo="/login">
       <main className="mx-auto max-w-7xl px-4 pb-20 pt-28 md:px-8">
@@ -10,26 +40,26 @@ function DormDetails() {
           <div>
             <div className="mb-2 flex items-center gap-3">
               <span className="rounded-full bg-secondary-container px-3 py-1 text-xs font-bold uppercase tracking-wider text-on-secondary-container">
-                {zenithSuite.type}
+                {dorm.type}
               </span>
               <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-800">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-                {zenithSuite.status}
+                {dorm.status}
               </span>
             </div>
-            <h1 className="mb-1 text-5xl font-black tracking-tighter text-on-surface md:text-6xl">{zenithSuite.name}</h1>
+            <h1 className="mb-1 text-5xl font-black tracking-tighter text-on-surface md:text-6xl">{dorm.name}</h1>
             <p className="flex items-center gap-2 text-lg text-secondary">
               <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
                 location_on
               </span>
-              {zenithSuite.location}
+              {dorm.location}
             </p>
           </div>
 
           <div className="text-left md:text-right">
             <p className="text-sm font-medium uppercase tracking-widest text-secondary">Monthly Rent</p>
             <div className="text-4xl font-extrabold text-primary">
-              {zenithSuite.rent}
+              {dorm.rent}
               <span className="text-lg font-medium text-secondary">/mo</span>
             </div>
           </div>
@@ -37,15 +67,15 @@ function DormDetails() {
 
         <section className="mb-12 grid h-auto grid-cols-1 gap-4 md:grid-cols-4 md:grid-rows-2 md:h-[500px]">
           <div className="overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.01] md:col-span-2 md:row-span-2">
-            <img src={zenithSuite.gallery[0]} alt="Main bedroom" className="h-full w-full object-cover" />
+            <img src={mainImage} alt={`${dorm.name} main view`} className="h-full w-full object-cover" />
           </div>
-          {zenithSuite.gallery.slice(1, 4).map((image, index) => (
+          {galleryGrid.map((image, index) => (
             <div key={image} className="overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.02]">
               <img src={image} alt={`Gallery ${index + 2}`} className="h-full w-full object-cover" />
             </div>
           ))}
           <div className="group relative overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.02]">
-            <img src={zenithSuite.gallery[4]} alt="Exterior" className="h-full w-full object-cover" />
+            <img src={finalGalleryImage} alt={`${dorm.name} exterior`} className="h-full w-full object-cover" />
             <div className="absolute inset-0 flex items-center justify-center bg-on-surface/40 opacity-0 transition group-hover:opacity-100">
               <span className="font-bold text-white">+12 Photos</span>
             </div>
@@ -57,7 +87,7 @@ function DormDetails() {
             <section>
               <h2 className="mb-6 text-2xl font-bold tracking-tight">Room Specifications</h2>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                {zenithSuite.specs.map((item) => (
+                {dorm.specs.map((item) => (
                   <div key={item.label} className="rounded-xl bg-surface-container-low p-6 transition duration-300 hover:bg-surface-container-lowest">
                     <span className="material-symbols-outlined mb-3 text-primary">{item.icon}</span>
                     <p className="text-xs font-bold uppercase tracking-widest text-secondary">{item.label}</p>
@@ -70,7 +100,7 @@ function DormDetails() {
             <section>
               <h2 className="mb-6 text-2xl font-bold tracking-tight">Premium Amenities</h2>
               <div className="flex flex-wrap gap-3">
-                {zenithSuite.amenities.map((item) => (
+                {dorm.amenities.map((item) => (
                   <div key={item.label} className="flex cursor-default items-center gap-3 rounded-full bg-secondary-container/50 px-5 py-3 transition hover:bg-secondary-container">
                     <span className="material-symbols-outlined text-on-secondary-container" style={{ fontVariationSettings: "'FILL' 1" }}>
                       {item.icon}

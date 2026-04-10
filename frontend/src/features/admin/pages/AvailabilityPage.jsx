@@ -1,17 +1,77 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../components/layout/AdminLayout'
 import Icon from '../components/Icon'
-import { availabilityRows, topbarAvatars } from '../data/dashboardData'
+import { topbarAvatars } from '../data/dashboardData'
+import { api } from '../../../api/client'
 
 const STATUS_OPTIONS = ['All', 'Open', 'Limited', 'Full', 'Maintenance']
+const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=300&q=80'
+
+function statusClass(status) {
+  if (status === 'Open') return 'bg-emerald-500/10 text-emerald-600'
+  if (status === 'Limited') return 'bg-amber-500/10 text-amber-600'
+  if (status === 'Full') return 'bg-error/10 text-error'
+  return 'bg-slate-200 text-slate-700'
+}
 
 function AvailabilityPage() {
-  const [roomReference, setRoomReference] = useState('A-312')
-  const [occupancy, setOccupancy] = useState('1')
+  const navigate = useNavigate()
+  const [rooms, setRooms] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [requestState, setRequestState] = useState('')
+  const [updating, setUpdating] = useState(false)
+
+  const [roomReferenceId, setRoomReferenceId] = useState('')
+  const [occupancy, setOccupancy] = useState('0')
   const [status, setStatus] = useState('Limited')
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
+
+  useEffect(() => {
+    async function loadRooms() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const { data } = await api.get('/rooms')
+        const rows = data.rooms || []
+        setRooms(rows)
+        if (rows[0]) {
+          setRoomReferenceId(rows[0]._id || '')
+          setOccupancy(String(rows[0].occupiedSeats || 0))
+          setStatus(rows[0].status || 'Open')
+        }
+      } catch (requestError) {
+        setError(requestError.response?.data?.message || 'Failed to load room availability data')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadRooms()
+  }, [])
+
+  const availabilityRows = useMemo(() => {
+    return rooms.map((room) => {
+      const total = Number(room.seatCount || 0)
+      const occupied = Number(room.occupiedSeats || 0)
+      const available = Math.max(total - occupied, 0)
+      return {
+        id: room._id,
+        dorm: room.dorm?.name || 'Dorm not assigned',
+        room: room.roomNumber || 'Unknown',
+        total,
+        occupied,
+        available,
+        status: room.status || 'Open',
+        statusClass: statusClass(room.status || 'Open'),
+        image: room.images?.[0] || PLACEHOLDER_IMAGE,
+      }
+    })
+  }, [rooms])
 
   const filteredRows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
@@ -26,7 +86,12 @@ function AvailabilityPage() {
       const matchesStatus = statusFilter === 'All' || row.status === statusFilter
       return matchesSearch && matchesStatus
     })
-  }, [searchTerm, statusFilter])
+  }, [availabilityRows, searchTerm, statusFilter])
+
+  const selectedQuickRoom = useMemo(
+    () => rooms.find((room) => room._id === roomReferenceId) || null,
+    [roomReferenceId, rooms],
+  )
 
   const summary = useMemo(() => {
     const totalCapacity = filteredRows.reduce((sum, row) => sum + row.total, 0)
@@ -48,6 +113,58 @@ function AvailabilityPage() {
   const resetFilters = () => {
     setSearchTerm('')
     setStatusFilter('All')
+  }
+
+  const useRoomInQuickUpdate = (row) => {
+    setRoomReferenceId(row.id)
+    setOccupancy(String(row.occupied))
+    setStatus(row.status)
+    setRequestState('')
+  }
+
+  const handleQuickUpdate = async () => {
+    const target = rooms.find((room) => room._id === roomReferenceId)
+    if (!target) {
+      setRequestState('Select a room before applying a quick update.')
+      return
+    }
+
+    setUpdating(true)
+    setRequestState('')
+
+    try {
+      await api.patch(`/rooms/${target._id}`, {
+        occupiedSeats: Number(occupancy || 0),
+        status,
+      })
+
+      const { data } = await api.get('/rooms')
+      const refreshedRooms = data.rooms || []
+      setRooms(refreshedRooms)
+
+      const refreshedTarget = refreshedRooms.find((room) => room._id === target._id)
+      if (refreshedTarget) {
+        setRoomReferenceId(refreshedTarget._id)
+        setOccupancy(String(refreshedTarget.occupiedSeats || 0))
+        setStatus(refreshedTarget.status || 'Open')
+      } else if (refreshedRooms[0]) {
+        setRoomReferenceId(refreshedRooms[0]._id)
+        setOccupancy(String(refreshedRooms[0].occupiedSeats || 0))
+        setStatus(refreshedRooms[0].status || 'Open')
+      } else {
+        setRoomReferenceId('')
+        setOccupancy('0')
+        setStatus('Open')
+      }
+
+      setRequestState(
+        `Room ${target.roomNumber} (${target.dorm?.name || 'Unknown Dorm'}) updated successfully.`,
+      )
+    } catch (requestError) {
+      setRequestState(requestError.response?.data?.message || 'Failed to update room.')
+    } finally {
+      setUpdating(false)
+    }
   }
 
   return (
@@ -80,12 +197,15 @@ function AvailabilityPage() {
             <Icon name="filter_list" />
             Reset Filters
           </button>
-          <button className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-primary to-primary-container px-6 py-3 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02]">
+          <button type="button" onClick={() => navigate('/admin/rooms/add')} className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-primary to-primary-container px-6 py-3 font-bold text-white shadow-lg shadow-primary/20 transition-all hover:scale-[1.02]">
             <Icon name="add" />
             New Room
           </button>
         </div>
       </div>
+
+      {error ? <p className="mb-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
+      {requestState ? <p className="mb-6 rounded-xl bg-[#e8f0f7] px-4 py-3 text-sm font-semibold text-[#4e6875]">{requestState}</p> : null}
 
       <div className="mb-8 grid grid-cols-1 gap-3 md:grid-cols-[1.6fr_1fr_auto]">
         <label className="relative block">
@@ -131,7 +251,7 @@ function AvailabilityPage() {
       <div className="mb-12 grid grid-cols-1 gap-6 md:grid-cols-4">
         <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6">
           <p className="mb-1 text-xs font-bold uppercase tracking-wider text-secondary">Total Capacity</p>
-          <h3 className="text-3xl font-black text-on-surface">{summary.totalCapacity}</h3>
+          <h3 className="text-3xl font-black text-on-surface">{loading ? '...' : summary.totalCapacity}</h3>
           <div className="mt-4 flex items-center gap-2">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-container">
               <div className="h-full bg-primary" style={{ width: `${summary.occupancyRate}%` }} />
@@ -141,17 +261,17 @@ function AvailabilityPage() {
         </div>
         <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6">
           <p className="mb-1 text-xs font-bold uppercase tracking-wider text-secondary">Occupied</p>
-          <h3 className="text-3xl font-black text-on-surface">{summary.occupied}</h3>
+          <h3 className="text-3xl font-black text-on-surface">{loading ? '...' : summary.occupied}</h3>
           <p className="mt-2 text-[10px] text-secondary">Active student residents</p>
         </div>
         <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6">
           <p className="mb-1 text-xs font-bold uppercase tracking-wider text-secondary">Available</p>
-          <h3 className="text-3xl font-black text-primary">{summary.available}</h3>
+          <h3 className="text-3xl font-black text-primary">{loading ? '...' : summary.available}</h3>
           <p className="mt-2 text-[10px] text-secondary">Ready for allocation</p>
         </div>
         <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6">
           <p className="mb-1 text-xs font-bold uppercase tracking-wider text-secondary">Maintenance</p>
-          <h3 className="text-3xl font-black text-error">{summary.maintenance}</h3>
+          <h3 className="text-3xl font-black text-error">{loading ? '...' : summary.maintenance}</h3>
           <p className="mt-2 text-[10px] text-secondary">Out of rotation</p>
         </div>
       </div>
@@ -174,7 +294,13 @@ function AvailabilityPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
-              {filteredRows.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-secondary">
+                    Loading room availability...
+                  </td>
+                </tr>
+              ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-10 text-center text-sm text-secondary">
                     No rooms match the current filters.
@@ -182,7 +308,7 @@ function AvailabilityPage() {
                 </tr>
               ) : (
                 filteredRows.map((row) => (
-                  <tr key={row.room} className="group transition-colors hover:bg-surface-container-low/30">
+                  <tr key={row.id} className="group transition-colors hover:bg-surface-container-low/30">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg">
@@ -204,7 +330,7 @@ function AvailabilityPage() {
                       </span>
                     </td>
                     <td className="px-6 py-5 text-right">
-                      <button className="rounded-lg p-2 text-primary opacity-0 transition-all hover:bg-surface-container-high group-hover:opacity-100">
+                      <button type="button" onClick={() => useRoomInQuickUpdate(row)} className="rounded-lg p-2 text-primary opacity-0 transition-all hover:bg-surface-container-high group-hover:opacity-100">
                         <Icon name="edit" />
                       </button>
                     </td>
@@ -218,11 +344,11 @@ function AvailabilityPage() {
         <div className="flex items-center justify-between border-t border-outline-variant/10 bg-surface-container-low/30 px-6 py-4">
           <p className="text-sm text-secondary">Showing {filteredRows.length} of {availabilityRows.length} rooms</p>
           <div className="flex items-center gap-2">
-            <button className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm"><Icon name="chevron_left" /></button>
-            <button className="rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white">1</button>
-            <button className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm">2</button>
-            <button className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm">3</button>
-            <button className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm"><Icon name="chevron_right" /></button>
+            <button type="button" className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm"><Icon name="chevron_left" /></button>
+            <button type="button" className="rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white">1</button>
+            <button type="button" className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm">2</button>
+            <button type="button" className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm">3</button>
+            <button type="button" className="rounded-lg bg-white px-3 py-2 text-sm shadow-sm"><Icon name="chevron_right" /></button>
           </div>
         </div>
       </div>
@@ -237,11 +363,27 @@ function AvailabilityPage() {
               <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-secondary">Room Reference</label>
               <div className="relative">
                 <Icon name="bolt" className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" />
-                <input
-                  value={roomReference}
-                  onChange={(e) => setRoomReference(e.target.value)}
+                <select
+                  value={roomReferenceId}
+                  onChange={(e) => {
+                    const nextId = e.target.value
+                    setRoomReferenceId(nextId)
+                    const selectedRoom = rooms.find((room) => room._id === nextId)
+                    if (selectedRoom) {
+                      setOccupancy(String(selectedRoom.occupiedSeats || 0))
+                      setStatus(selectedRoom.status || 'Open')
+                    }
+                    setRequestState('')
+                  }}
                   className="w-full rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3 pl-10"
-                />
+                >
+                  {!rooms.length ? <option value="">No rooms available</option> : null}
+                  {rooms.map((room) => (
+                    <option key={room._id} value={room._id}>
+                      {(room.dorm?.name || 'Unknown Dorm') + ' - ' + (room.roomNumber || 'Unknown Room')}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div>
@@ -251,11 +393,11 @@ function AvailabilityPage() {
                 onChange={(e) => setOccupancy(e.target.value)}
                 className="w-full rounded-xl border border-outline-variant/20 bg-surface-container-low px-4 py-3"
               >
-                <option>0</option>
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
+                {Array.from({ length: 8 }, (_, index) => (
+                  <option key={index} value={String(index)}>
+                    {index}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -277,11 +419,18 @@ function AvailabilityPage() {
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-secondary">Update Preview</p>
               <p className="mt-2 text-sm text-on-surface">
-                Room <span className="font-bold">{roomReference}</span> will be set to <span className="font-bold">{occupancy}</span> occupied seats and <span className="font-bold">{status}</span> status.
+                Room{' '}
+                <span className="font-bold">
+                  {selectedQuickRoom
+                    ? `${selectedQuickRoom.dorm?.name || 'Dorm'} / ${selectedQuickRoom.roomNumber || 'N/A'}`
+                    : 'N/A'}
+                </span>{' '}
+                will be set to <span className="font-bold">{occupancy}</span> occupied seats and{' '}
+                <span className="font-bold">{status}</span> status.
               </p>
             </div>
-            <button className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02]">
-              Update Room
+            <button type="button" onClick={handleQuickUpdate} disabled={updating} className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-70">
+              {updating ? 'Updating...' : 'Update Room'}
             </button>
           </div>
         </div>
@@ -291,22 +440,22 @@ function AvailabilityPage() {
           <div className="mt-6 space-y-4">
             <div className="flex items-center gap-3 rounded-2xl bg-white/60 p-4">
               <Icon name="warning" className="text-amber-500" />
-              <p className="text-xs font-medium">West Wing cleaning finishes today.</p>
+              <p className="text-xs font-medium">{summary.maintenance} rooms currently marked for maintenance.</p>
             </div>
             <div className="flex items-center gap-3 rounded-2xl bg-white/60 p-4">
               <Icon name="group" className="text-primary" />
-              <p className="text-xs font-medium">12 New applications pending.</p>
+              <p className="text-xs font-medium">{summary.available} seats are available for new allocations.</p>
             </div>
           </div>
           <div className="mt-6 flex flex-wrap gap-2 border-t border-outline-variant/20 pt-4">
             <span className="flex items-center gap-1.5 rounded-full bg-secondary-container/50 px-3 py-1.5 text-[10px] font-bold text-on-secondary-container">
-              <Icon name="wifi" className="text-xs" /> 98% Up
+              <Icon name="wifi" className="text-xs" /> Live Sync
             </span>
             <span className="flex items-center gap-1.5 rounded-full bg-secondary-container/50 px-3 py-1.5 text-[10px] font-bold text-on-secondary-container">
-              <Icon name="cleaning_services" className="text-xs" /> 4 Pending
+              <Icon name="cleaning_services" className="text-xs" /> {summary.maintenance} Pending
             </span>
             <span className="flex items-center gap-1.5 rounded-full bg-secondary-container/50 px-3 py-1.5 text-[10px] font-bold text-on-secondary-container">
-              <Icon name="ac_unit" className="text-xs" /> 100% OK
+              <Icon name="bed" className="text-xs" /> {summary.totalCapacity} Capacity
             </span>
           </div>
         </div>

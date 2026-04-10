@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import DormCard from '../components/DormCard'
 import PageShell from '../components/PageShell'
 import { browseDorms } from '../data/dormData'
@@ -17,22 +18,49 @@ const STATUS_OPTIONS = [
 ]
 
 function priceToNumber(price) {
-  const numeric = price.replace(/[^\d]/g, '')
+  const numeric = String(price || '').replace(/[^\d]/g, '')
   return numeric ? Number(numeric) : 0
 }
 
+function parseCsvParam(value) {
+  if (!value) return []
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 function BrowseDorms() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedBlocks, setSelectedBlocks] = useState([])
-  const [selectedRoomType, setSelectedRoomType] = useState('All Types')
-  const [maxBudget, setMaxBudget] = useState(15000)
-  const [selectedAmenities, setSelectedAmenities] = useState([])
-  const [selectedStatuses, setSelectedStatuses] = useState([])
-  const [sortBy, setSortBy] = useState('availability')
+  const [searchParams] = useSearchParams()
 
   const roomTypeOptions = useMemo(() => {
     return ['All Types', ...new Set(browseDorms.map((dorm) => dorm.type))]
   }, [])
+
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '')
+  const [selectedBlocks, setSelectedBlocks] = useState(() =>
+    parseCsvParam(searchParams.get('blocks')).filter((block) => BLOCK_OPTIONS.includes(block)),
+  )
+  const [selectedRoomType, setSelectedRoomType] = useState(() => {
+    const fromQuery = searchParams.get('roomType')
+    return roomTypeOptions.includes(fromQuery) ? fromQuery : 'All Types'
+  })
+  const [maxBudget, setMaxBudget] = useState(() => {
+    const fromQuery = Number(searchParams.get('maxBudget'))
+    if (!Number.isFinite(fromQuery) || fromQuery <= 0) return 15000
+    return Math.max(2500, Math.min(fromQuery, 15000))
+  })
+  const [selectedAmenities, setSelectedAmenities] = useState(() =>
+    parseCsvParam(searchParams.get('amenities')).filter((amenity) =>
+      AMENITY_OPTIONS.some(([, label]) => label === amenity),
+    ),
+  )
+  const [selectedStatuses, setSelectedStatuses] = useState(() =>
+    parseCsvParam(searchParams.get('statuses')).filter((status) =>
+      STATUS_OPTIONS.some(([, label]) => label === status),
+    ),
+  )
+  const [sortBy, setSortBy] = useState(() => searchParams.get('sortBy') || 'availability')
 
   const filteredDorms = useMemo(() => {
     const availabilityRank = {
