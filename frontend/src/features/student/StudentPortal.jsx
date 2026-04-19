@@ -403,10 +403,18 @@ function Topbar({ placeholder = 'Search portal...' }) {
             ) : null}
           </div>
 
-          <Avatar
-            src={user?.profileImage || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80'}
-            className="h-11 w-11 ring-2 ring-white"
-          />
+          <button
+            type="button"
+            onClick={goToProfile}
+            className="rounded-full transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[#0c56d0] focus:ring-offset-2"
+            aria-label="Go to profile"
+            title="Go to profile"
+          >
+            <Avatar
+              src={user?.profileImage || 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=120&q=80'}
+              className="h-11 w-11 ring-2 ring-white"
+            />
+          </button>
         </div>
       </div>
     </header>
