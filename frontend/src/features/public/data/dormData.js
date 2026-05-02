@@ -243,6 +243,7 @@ function toDetailsData(dorm) {
     status: dorm.status,
     location: dorm.location,
     rent: dorm.price,
+    amenityTags: dorm.amenities,
     specs: dorm.specs,
     amenities: dorm.detailedAmenities,
     gallery: dorm.images,
@@ -253,6 +254,7 @@ const dormDetails = dormCatalog.map(toDetailsData)
 
 export const featuredDorms = dormCatalog.filter((dorm) => dorm.featured).map(toCardData)
 export const browseDorms = dormCatalog.map(toBrowseData)
+export const comparableDorms = dormCatalog.map(toDetailsData)
 
 export function getDormDetailsById(id) {
   return dormDetails.find((dorm) => dorm.id === id) || null
