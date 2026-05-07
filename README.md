@@ -60,7 +60,7 @@ The goal is to make student housing more transparent, organized, and efficient.
   - Public pages (`Home`, `Browse Dorms`, `Dorm Details`, `Apply Now`, `Login`, `Signup`)
   - Student dashboard (`Overview`, `Applications`, `Maintenance`, `Documents`, `Reviews`, `Profile`, `Support`)
   - Admin dashboard (`Overview`, `Dorms`, `Add Dorm`, `Add Room`, `Applications`, `Documents`, `Availability`, `Support`, `Settings`)
-  - Super admin dashboard (`Dashboard`, `Dorms`, `Dorm Admins`, `Students`, `Applications`, `Rooms`, `Transactions`, `Documents`, `Complaints`, `Feedback`, `Reports`)
+  - Super admin dashboard (`Dashboard`, `Dorms`, `Dorm Admins`, `Students`, `Applications`, `Transactions`, `Documents`, `Complaints`)
 - `backend/`: REST API with JWT auth, role-based access, and MongoDB models
 - `database/`: Seed script (`seed.js`) to initialize sample data
 - `docs/`: Project documentation artifacts

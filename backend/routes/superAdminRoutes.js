@@ -3,22 +3,16 @@ import {
   approveTransaction,
   createDorm,
   createDormAdmin,
-  createRoom,
   deleteDorm,
   deleteDormAdmin,
-  deleteFeedback,
-  deleteRoom,
   getAllApplications,
   getAllComplaints,
   getAllDocuments,
   getAllDormAdmins,
   getAllDorms,
-  getAllFeedback,
-  getAllRooms,
   getAllStudents,
   getAllTransactions,
   getDashboardStats,
-  getReports,
   getSingleTransaction,
   rejectDocument,
   rejectTransaction,
@@ -29,7 +23,6 @@ import {
   updateDormAdmin,
   updateDormAdminStatus,
   updateDormStatus,
-  updateRoom,
   updateStudentStatus,
   verifyDocument,
 } from '../controllers/superAdminController.js'
@@ -41,7 +34,6 @@ router.use(protect)
 router.use(authorize('superAdmin'))
 
 router.get('/dashboard', getDashboardStats)
-router.get('/reports', getReports)
 
 router.get('/dorms', getAllDorms)
 router.post('/dorms', createDorm)
@@ -73,12 +65,6 @@ router.patch('/applications/:id/waitlist', (req, res, next) => {
   updateApplicationDecision(req, res, next)
 })
 
-router.get('/rooms', getAllRooms)
-router.post('/rooms', createRoom)
-router.patch('/rooms/:id', updateRoom)
-router.patch('/rooms/:id/status', updateRoom)
-router.delete('/rooms/:id', deleteRoom)
-
 router.get('/transactions', getAllTransactions)
 router.get('/transactions/:id', getSingleTransaction)
 router.patch('/transactions/:id/approve', approveTransaction)
@@ -91,8 +77,5 @@ router.patch('/documents/:id/reject', rejectDocument)
 router.get('/complaints', getAllComplaints)
 router.patch('/complaints/:id/reply', replyComplaint)
 router.patch('/complaints/:id/solve', solveComplaint)
-
-router.get('/feedback', getAllFeedback)
-router.delete('/feedback/:id', deleteFeedback)
 
 export default router

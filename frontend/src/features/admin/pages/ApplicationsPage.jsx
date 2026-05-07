@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FiDownload, FiEye, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
+import { FiEye, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 import { MdPendingActions, MdRateReview, MdCheckCircle, MdAnalytics } from 'react-icons/md'
 import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
@@ -58,6 +58,7 @@ function initialsFromName(name) {
 
 function ApplicationsPage() {
   const [applications, setApplications] = useState([])
+  const [catalogRequests, setCatalogRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [requestState, setRequestState] = useState('')
@@ -78,8 +79,12 @@ function ApplicationsPage() {
       setError('')
 
       try {
-        const { data } = await api.get('/applications')
-        setApplications(data.applications || [])
+        const [{ data: applicationData }, { data: catalogData }] = await Promise.all([
+          api.get('/applications'),
+          api.get('/catalog-requests'),
+        ])
+        setApplications(applicationData.applications || [])
+        setCatalogRequests(catalogData.requests || [])
       } catch (requestError) {
         setError(requestError.response?.data?.message || 'Failed to load applications')
       } finally {
@@ -210,18 +215,25 @@ function ApplicationsPage() {
       })
 
       const updated = data.application
+      const updatedStudentId = updated.student?._id || selectedApplication.student?._id || selectedApplication.student
       setApplications((prev) =>
-        prev.map((item) => (
-          item._id === updated._id
-            ? {
-                ...item,
-                status: updated.status,
-                room: updated.room,
-                adminNote: updated.adminNote,
-                updatedAt: updated.updatedAt || item.updatedAt,
-              }
-            : item
-        )),
+        prev
+          .filter((item) => {
+            if (updated.status !== 'Approved') return true
+            const itemStudentId = item.student?._id || item.student
+            return item._id === updated._id || String(itemStudentId) !== String(updatedStudentId) || item.status === 'Approved'
+          })
+          .map((item) => (
+            item._id === updated._id
+              ? {
+                  ...item,
+                  status: updated.status,
+                  room: updated.room,
+                  adminNote: updated.adminNote,
+                  updatedAt: updated.updatedAt || item.updatedAt,
+                }
+              : item
+          )),
       )
       setSelectedApplication((prev) =>
         prev
@@ -240,29 +252,6 @@ function ApplicationsPage() {
     } finally {
       setSaving(false)
     }
-  }
-
-  const exportCsv = () => {
-    const header = ['Student Name', 'Student ID', 'Dorm', 'Room', 'Status', 'Submitted']
-    const rows = filteredApplications.map((app) => [
-      app.student?.name || 'Unknown',
-      app.student?.studentId || app.student?._id || 'N/A',
-      app.dorm?.name || 'Not assigned',
-      `${app.room?.type || 'Unassigned'} ${app.room?.roomNumber || ''}`.trim(),
-      app.status || 'Pending',
-      formatDate(app.createdAt),
-    ])
-
-    const csv = [header, ...rows]
-      .map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
-      .join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'dormdoor-applications.csv'
-    link.click()
-    URL.revokeObjectURL(link.href)
   }
 
   return (
@@ -285,12 +274,60 @@ function ApplicationsPage() {
               Review and process student housing requests for the current academic session.
             </p>
           </div>
-          <button type="button" onClick={exportCsv} className="flex items-center gap-2 rounded-xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-soft">
-            <FiDownload /> Export CSV
-          </button>
         </div>
 
         {error ? <p className="mb-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
+
+        <section className="mb-10 rounded-[1.5rem] border border-[#ece7e4] bg-white p-6">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black tracking-tight">Dorm and Room Requests</h2>
+              <p className="mt-1 text-sm text-secondary">Requests you submitted for super admin approval.</p>
+            </div>
+            <span className="rounded-full bg-[#eef3ff] px-3 py-1 text-xs font-bold text-primary">
+              {catalogRequests.filter((item) => item.status === 'Pending').length} Pending
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left">
+              <thead className="bg-[#faf7f6]">
+                <tr>
+                  {['Type', 'Name / Room', 'Target Dorm', 'Submitted', 'Status', 'Note'].map((head) => (
+                    <th key={head} className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-secondary">{head}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-secondary">Loading requests...</td></tr>
+                ) : catalogRequests.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-secondary">No dorm or room requests submitted yet.</td></tr>
+                ) : (
+                  catalogRequests.map((request) => {
+                    const statusStyle = getStatusStyle(request.status)
+                    const payload = request.payload || {}
+                    return (
+                      <tr key={request._id} className="border-t border-[#f0ebea]">
+                        <td className="px-4 py-4 text-sm font-bold capitalize">{request.type}</td>
+                        <td className="px-4 py-4 text-sm">{request.type === 'dorm' ? payload.name : payload.roomNumber}</td>
+                        <td className="px-4 py-4 text-sm text-secondary">{request.type === 'dorm' ? payload.block || 'General' : payload.dorm || 'Selected dorm'}</td>
+                        <td className="px-4 py-4 text-sm text-secondary">{formatDate(request.createdAt)}</td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ring-1 ${statusStyle.badge}`}>
+                            <span className={`h-2 w-2 rounded-full ${statusStyle.dot}`} />
+                            {request.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-sm text-secondary">{request.adminNote || 'No note'}</td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <div className="mb-8 grid gap-4 md:grid-cols-[1fr_auto]">
           <label className="relative block">

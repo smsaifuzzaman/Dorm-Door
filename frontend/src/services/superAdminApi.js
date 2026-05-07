@@ -3,7 +3,6 @@ import { api } from '../api/client'
 const base = '/super-admin'
 
 export const getDashboardStats = () => api.get(`${base}/dashboard`)
-export const getReports = () => api.get(`${base}/reports`)
 
 export const getDorms = () => api.get(`${base}/dorms`)
 export const createDorm = (payload) => api.post(`${base}/dorms`, payload)
@@ -32,10 +31,11 @@ export const rejectApplication = (id, adminNote = '') =>
 export const waitlistApplication = (id, adminNote = '') =>
   api.patch(`${base}/applications/${id}/waitlist`, { adminNote })
 
-export const getRooms = () => api.get(`${base}/rooms`)
-export const createRoom = (payload) => api.post(`${base}/rooms`, payload)
-export const updateRoom = (id, payload) => api.patch(`${base}/rooms/${id}`, payload)
-export const deleteRoom = (id) => api.delete(`${base}/rooms/${id}`)
+export const getCatalogRequests = () => api.get('/catalog-requests')
+export const approveCatalogRequest = (id, adminNote = '') =>
+  api.patch(`/catalog-requests/${id}/approve`, { adminNote })
+export const rejectCatalogRequest = (id, adminNote = '') =>
+  api.patch(`/catalog-requests/${id}/reject`, { adminNote })
 
 export const getTransactions = () => api.get(`${base}/transactions`)
 export const getTransaction = (id) => api.get(`${base}/transactions/${id}`)
@@ -53,12 +53,8 @@ export const getComplaints = () => api.get(`${base}/complaints`)
 export const replyComplaint = (id, reply) => api.patch(`${base}/complaints/${id}/reply`, { reply })
 export const solveComplaint = (id) => api.patch(`${base}/complaints/${id}/solve`)
 
-export const getFeedback = () => api.get(`${base}/feedback`)
-export const deleteFeedback = (id) => api.delete(`${base}/feedback/${id}`)
-
 export default {
   getDashboardStats,
-  getReports,
   getDorms,
   createDorm,
   updateDorm,
@@ -76,10 +72,9 @@ export default {
   approveApplication,
   rejectApplication,
   waitlistApplication,
-  getRooms,
-  createRoom,
-  updateRoom,
-  deleteRoom,
+  getCatalogRequests,
+  approveCatalogRequest,
+  rejectCatalogRequest,
   getTransactions,
   getTransaction,
   approveTransaction,
@@ -90,6 +85,4 @@ export default {
   getComplaints,
   replyComplaint,
   solveComplaint,
-  getFeedback,
-  deleteFeedback,
 }

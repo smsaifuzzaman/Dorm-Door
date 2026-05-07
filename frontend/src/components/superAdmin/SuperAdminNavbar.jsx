@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, CheckCheck, Search } from 'lucide-react'
+import { Bell, CheckCheck } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 
@@ -134,14 +134,6 @@ function SuperAdminNavbar({ title = 'Super Admin Panel', subtitle = 'Manage the 
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-            <input
-              placeholder="Search panel..."
-              className="w-72 rounded-lg border border-[#e8edf3] bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-primary focus:bg-white"
-            />
-          </div>
-
           <div className="relative" ref={notificationMenuRef}>
             <button
               type="button"

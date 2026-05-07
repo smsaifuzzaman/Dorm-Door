@@ -15,6 +15,7 @@ const reviewSchema = new mongoose.Schema(
     room: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Room',
+      required: true,
     },
     rating: {
       overall: { type: Number, min: 1, max: 5, required: true },

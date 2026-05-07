@@ -1,3 +1,4 @@
+import { Application } from '../models/Application.js'
 import { Review } from '../models/Review.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
@@ -19,8 +20,26 @@ export const listReviews = asyncHandler(async (req, res) => {
 })
 
 export const createReview = asyncHandler(async (req, res) => {
+  const { dorm, room, rating, comment } = req.body
+  if (!dorm || !room || !comment || !rating?.overall) {
+    throw new ApiError(400, 'dorm, room, overall rating, and comment are required')
+  }
+
+  const approvedApplication = await Application.findOne({
+    student: req.user.id,
+    status: 'Approved',
+    dorm,
+    room,
+  })
+
+  if (!approvedApplication) {
+    throw new ApiError(403, 'You must be assigned to a dorm before submitting a review.')
+  }
+
   const review = await Review.create({
     ...req.body,
+    dorm,
+    room,
     student: req.user.id,
   })
 

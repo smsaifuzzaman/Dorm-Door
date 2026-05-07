@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { api } from '../../../api/client'
 import PageShell from '../components/PageShell'
-import { comparableDorms, getDormDetailsById } from '../data/dormData'
+import { toPublicDorm, toPublicDorms } from '../utils/dormMappers'
 
 const amenityLabelMap = {
   WiFi: 'Wi-Fi',
@@ -64,12 +65,61 @@ function DormDetails() {
   const [isCompareOpen, setIsCompareOpen] = useState(false)
   const [compareDormId, setCompareDormId] = useState('')
   const [useSimpleComparePicker, setUseSimpleComparePicker] = useState(false)
-  const dorm = useMemo(() => getDormDetailsById(id), [id])
-  const compareOptions = useMemo(() => comparableDorms.filter((item) => item.id !== id), [id])
+  const [dorm, setDorm] = useState(null)
+  const [comparableDorms, setComparableDorms] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const compareOptions = useMemo(() => comparableDorms.filter((item) => item.id !== id), [comparableDorms, id])
   const comparedDorm = useMemo(
     () => compareOptions.find((item) => item.id === compareDormId) || null,
     [compareDormId, compareOptions],
   )
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadDorm() {
+      setLoading(true)
+      setError('')
+      setCompareDormId('')
+
+      try {
+        const [{ data: detailData }, { data: listData }] = await Promise.all([
+          api.get(`/dorms/${id}`),
+          api.get('/dorms'),
+        ])
+
+        if (!mounted) return
+        setDorm(toPublicDorm({ ...(detailData.dorm || {}), rooms: detailData.rooms || [] }))
+        setComparableDorms(toPublicDorms(listData.dorms || []))
+      } catch (requestError) {
+        if (mounted) {
+          setDorm(null)
+          setComparableDorms([])
+          setError(requestError.response?.data?.message || 'This listing is unavailable.')
+        }
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+
+    loadDorm()
+    return () => {
+      mounted = false
+    }
+  }, [id])
+
+  if (loading) {
+    return (
+      <PageShell buttonLabel="Browse Dorms" buttonTo="/browse-dorms">
+        <main className="mx-auto max-w-4xl px-6 pb-20 pt-32 md:px-8">
+          <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-10 text-center">
+            <h1 className="text-4xl font-black tracking-tight text-on-surface">Loading listing...</h1>
+          </div>
+        </main>
+      </PageShell>
+    )
+  }
 
   if (!dorm) {
     return (
@@ -78,7 +128,7 @@ function DormDetails() {
           <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-10 text-center">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-secondary">Dorm not found</p>
             <h1 className="mt-3 text-4xl font-black tracking-tight text-on-surface">This listing is unavailable</h1>
-            <p className="mt-3 text-secondary">The dorm you opened may have been removed or moved to a different listing.</p>
+            <p className="mt-3 text-secondary">{error || 'The dorm you opened may have been removed or moved to a different listing.'}</p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
               <Link to="/browse-dorms" className="rounded-lg bg-primary px-6 py-3 text-sm font-bold text-white">
                 Browse Dorms
@@ -166,7 +216,7 @@ function DormDetails() {
             <section>
               <h2 className="mb-6 text-2xl font-bold tracking-tight">Premium Amenities</h2>
               <div className="flex flex-wrap gap-3">
-                {dorm.amenities.map((item) => (
+                {dorm.detailedAmenities.map((item) => (
                   <div key={item.label} className="flex cursor-default items-center gap-3 rounded-full bg-secondary-container/50 px-5 py-3 transition hover:bg-secondary-container">
                     <span className="material-symbols-outlined text-on-secondary-container" style={{ fontVariationSettings: "'FILL' 1" }}>
                       {item.icon}

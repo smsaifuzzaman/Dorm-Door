@@ -1,26 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { api } from '../../../api/client'
 import DormCard from '../components/DormCard'
 import PageShell from '../components/PageShell'
-import { browseDorms } from '../data/dormData'
+import { priceToNumber, toPublicDorms } from '../utils/dormMappers'
 
-const BLOCK_OPTIONS = ['Block A (North)', 'Block B (South)', 'Executive Annex']
-const AMENITY_OPTIONS = [
-  ['wifi', 'WiFi'],
-  ['ac_unit', 'AC'],
-  ['bathroom', 'Bath'],
-  ['local_laundry_service', 'Laundry'],
-]
 const STATUS_OPTIONS = [
   ['bg-emerald-500', 'Available'],
   ['bg-amber-500', 'Limited Seats'],
   ['bg-red-500', 'Full'],
 ]
-
-function priceToNumber(price) {
-  const numeric = String(price || '').replace(/[^\d]/g, '')
-  return numeric ? Number(numeric) : 0
-}
 
 function parseCsvParam(value) {
   if (!value) return []
@@ -30,37 +19,74 @@ function parseCsvParam(value) {
     .filter(Boolean)
 }
 
+function amenityIcon(label) {
+  const normalized = String(label || '').toLowerCase()
+  if (normalized.includes('wifi') || normalized.includes('internet')) return 'wifi'
+  if (normalized.includes('ac') || normalized.includes('air')) return 'ac_unit'
+  if (normalized.includes('bath')) return 'bathroom'
+  if (normalized.includes('laundry')) return 'local_laundry_service'
+  return 'check_circle'
+}
+
 function BrowseDorms() {
   const [searchParams] = useSearchParams()
+  const [dorms, setDorms] = useState([])
+  const [loadingDorms, setLoadingDorms] = useState(true)
+  const [dormError, setDormError] = useState('')
 
   const roomTypeOptions = useMemo(() => {
-    return ['All Types', ...new Set(browseDorms.map((dorm) => dorm.type))]
-  }, [])
+    return ['All Types', ...new Set(dorms.map((dorm) => dorm.type))]
+  }, [dorms])
+
+  const blockOptions = useMemo(() => {
+    return [...new Set(dorms.map((dorm) => dorm.block).filter(Boolean))]
+  }, [dorms])
+
+  const amenityOptions = useMemo(() => {
+    return [...new Set(dorms.flatMap((dorm) => dorm.amenities || []))]
+  }, [dorms])
 
   const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '')
-  const [selectedBlocks, setSelectedBlocks] = useState(() =>
-    parseCsvParam(searchParams.get('blocks')).filter((block) => BLOCK_OPTIONS.includes(block)),
-  )
+  const [selectedBlocks, setSelectedBlocks] = useState(() => parseCsvParam(searchParams.get('blocks')))
   const [selectedRoomType, setSelectedRoomType] = useState(() => {
     const fromQuery = searchParams.get('roomType')
-    return roomTypeOptions.includes(fromQuery) ? fromQuery : 'All Types'
+    return fromQuery || 'All Types'
   })
   const [maxBudget, setMaxBudget] = useState(() => {
     const fromQuery = Number(searchParams.get('maxBudget'))
     if (!Number.isFinite(fromQuery) || fromQuery <= 0) return 15000
     return Math.max(2500, Math.min(fromQuery, 15000))
   })
-  const [selectedAmenities, setSelectedAmenities] = useState(() =>
-    parseCsvParam(searchParams.get('amenities')).filter((amenity) =>
-      AMENITY_OPTIONS.some(([, label]) => label === amenity),
-    ),
-  )
+  const [selectedAmenities, setSelectedAmenities] = useState(() => parseCsvParam(searchParams.get('amenities')))
   const [selectedStatuses, setSelectedStatuses] = useState(() =>
     parseCsvParam(searchParams.get('statuses')).filter((status) =>
       STATUS_OPTIONS.some(([, label]) => label === status),
     ),
   )
   const [sortBy, setSortBy] = useState(() => searchParams.get('sortBy') || 'availability')
+
+  useEffect(() => {
+    let mounted = true
+
+    async function loadDorms() {
+      setLoadingDorms(true)
+      setDormError('')
+
+      try {
+        const { data } = await api.get('/dorms')
+        if (mounted) setDorms(toPublicDorms(data.dorms || []))
+      } catch (requestError) {
+        if (mounted) setDormError(requestError.response?.data?.message || 'Dorm listings are unavailable right now.')
+      } finally {
+        if (mounted) setLoadingDorms(false)
+      }
+    }
+
+    loadDorms()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const filteredDorms = useMemo(() => {
     const availabilityRank = {
@@ -69,7 +95,7 @@ function BrowseDorms() {
       Full: 2,
     }
 
-    const filtered = browseDorms.filter((dorm) => {
+    const filtered = dorms.filter((dorm) => {
       const matchesSearch =
         searchTerm.trim() === '' ||
         dorm.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -112,6 +138,7 @@ function BrowseDorms() {
       return availabilityRank[a.status] - availabilityRank[b.status]
     })
   }, [
+    dorms,
     maxBudget,
     searchTerm,
     selectedAmenities,
@@ -155,13 +182,18 @@ function BrowseDorms() {
           </div>
         </header>
 
+        {dormError ? (
+          <div className="mb-8 rounded-2xl bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">{dormError}</div>
+        ) : null}
+
         <div className="flex flex-col gap-12 md:flex-row">
           <aside className="w-full md:w-1/4">
-            <div className="sticky top-28 space-y-8">
+            <div className="sticky top-28 max-h-[calc(100vh-8rem)] space-y-8 overflow-y-auto pr-3">
               <section>
                 <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Block / Building</h3>
                 <div className="space-y-3">
-                  {BLOCK_OPTIONS.map((item) => (
+                  {blockOptions.length === 0 ? <p className="text-sm text-secondary">No blocks available.</p> : null}
+                  {blockOptions.map((item) => (
                     <label key={item} className="group flex cursor-pointer items-center gap-3">
                       <input
                         type="checkbox"
@@ -215,7 +247,8 @@ function BrowseDorms() {
               <section>
                 <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Amenities</h3>
                 <div className="grid grid-cols-2 gap-2">
-                  {AMENITY_OPTIONS.map(([icon, label]) => {
+                  {amenityOptions.length === 0 ? <p className="col-span-2 text-sm text-secondary">No amenities listed.</p> : null}
+                  {amenityOptions.map((label) => {
                     const active = selectedAmenities.includes(label)
                     return (
                       <button
@@ -228,7 +261,7 @@ function BrowseDorms() {
                             : 'border-outline-variant/20 bg-surface-container-lowest hover:border-primary'
                         }`}
                       >
-                        <span className="material-symbols-outlined text-sm">{icon}</span>
+                        <span className="material-symbols-outlined text-sm">{amenityIcon(label)}</span>
                         {label}
                       </button>
                     )
@@ -259,7 +292,7 @@ function BrowseDorms() {
           <div className="w-full md:w-3/4">
             <div className="mb-8 flex flex-col items-center justify-between gap-4 sm:flex-row">
               <p className="text-sm font-medium text-secondary">
-                Showing <span className="font-bold text-on-surface">{filteredDorms.length}</span> matching dormitory spaces
+                Showing <span className="font-bold text-on-surface">{loadingDorms ? '...' : filteredDorms.length}</span> matching dormitory spaces
               </p>
               <div className="flex items-center gap-3">
                 <span className="text-xs font-bold uppercase tracking-widest text-outline">Sort by:</span>
@@ -276,7 +309,11 @@ function BrowseDorms() {
               </div>
             </div>
 
-            {filteredDorms.length === 0 ? (
+            {loadingDorms ? (
+              <div className="rounded-2xl bg-surface-container-low px-6 py-12 text-center">
+                <h3 className="text-xl font-bold text-on-surface">Loading dorms...</h3>
+              </div>
+            ) : filteredDorms.length === 0 ? (
               <div className="rounded-2xl bg-surface-container-low px-6 py-12 text-center">
                 <h3 className="text-xl font-bold text-on-surface">No matching dorms found</h3>
                 <p className="mt-3 text-secondary">Try clearing one or two filters to see more options.</p>

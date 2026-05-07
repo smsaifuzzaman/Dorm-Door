@@ -9,7 +9,22 @@ const supportMessageSchema = new mongoose.Schema(
     },
     text: {
       type: String,
-      required: true,
+      default: '',
+    },
+    attachments: {
+      type: [
+        {
+          fileName: String,
+          mimeType: String,
+          sizeBytes: Number,
+          storageType: {
+            type: String,
+            enum: ['upload'],
+            default: 'upload',
+          },
+        },
+      ],
+      default: [],
     },
     createdAt: {
       type: Date,

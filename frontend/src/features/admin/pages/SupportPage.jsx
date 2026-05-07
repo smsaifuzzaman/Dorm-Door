@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import AdminLayout from '../components/layout/AdminLayout'
 import Icon from '../components/Icon'
 import { topbarAvatars } from '../data/dashboardData'
@@ -44,7 +44,16 @@ function formatReadableDate(value) {
   })
 }
 
+function formatFileSize(value) {
+  const bytes = Number(value) || 0
+  if (bytes <= 0) return 'N/A'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 function SupportPage() {
+  const fileInputRef = useRef(null)
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -52,6 +61,7 @@ function SupportPage() {
   const [activeTicketId, setActiveTicketId] = useState('')
   const [filter, setFilter] = useState('All Tickets')
   const [reply, setReply] = useState('')
+  const [attachment, setAttachment] = useState(null)
   const [sending, setSending] = useState(false)
   const [resolving, setResolving] = useState(false)
 
@@ -86,11 +96,6 @@ function SupportPage() {
     [activeTicketId, filteredTickets, tickets],
   )
 
-  const openCount = useMemo(
-    () => tickets.filter((ticket) => ticket.status !== 'Resolved').length,
-    [tickets],
-  )
-
   const mapTicketToView = (ticket) => {
     if (!ticket) return null
 
@@ -100,6 +105,7 @@ function SupportPage() {
         from: isAdmin ? 'admin' : 'resident',
         date: formatReadableDate(message.createdAt),
         text: message.text,
+        attachments: message.attachments || [],
       }
     })
 
@@ -154,15 +160,22 @@ function SupportPage() {
   }
 
   const handleSendMessage = async () => {
-    if (!activeTicket?._id || !reply.trim()) return
+    if (!activeTicket?._id || (!reply.trim() && !attachment)) return
     setSending(true)
     setRequestState('')
 
     try {
-      const { data } = await api.post(`/support/${activeTicket._id}/messages`, { text: reply.trim() })
+      const payload = new FormData()
+      payload.append('text', reply.trim())
+      if (attachment) payload.append('file', attachment)
+      const { data } = await api.post(`/support/${activeTicket._id}/messages`, payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
       const updated = data.ticket
       setTickets((prev) => prev.map((ticket) => (ticket._id === updated._id ? updated : ticket)))
       setReply('')
+      setAttachment(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (requestError) {
       setRequestState(requestError.response?.data?.message || 'Failed to send message.')
     } finally {
@@ -189,7 +202,6 @@ function SupportPage() {
         <div className="p-6">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-2xl font-bold tracking-tight text-on-surface">Inbox</h2>
-            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-white">{openCount} OPEN</span>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             {['All Tickets', 'Pending', 'Resolved'].map((option) => (
@@ -213,7 +225,7 @@ function SupportPage() {
           {loading ? (
             <div className="px-5 py-6 text-sm text-secondary">Loading tickets...</div>
           ) : filteredTickets.length === 0 ? (
-            <div className="px-5 py-6 text-sm text-secondary">No tickets found.</div>
+            <div className="px-5 py-6 text-sm text-secondary">No support messages found.</div>
           ) : filteredTickets.map((ticket) => {
             const active = ticket._id === (activeViewTicket?._id || '')
             const mapped = mapTicketToView(ticket)
@@ -266,10 +278,6 @@ function SupportPage() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <button type="button" className="flex items-center gap-2 rounded-xl border border-outline-variant/20 px-4 py-2 text-sm font-semibold text-on-surface transition-colors hover:bg-white">
-                  <Icon name="history" />
-                  View History
-                </button>
                 <button type="button" onClick={handleMarkResolved} disabled={resolving || activeViewTicket.status === 'Resolved'} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60">
                   <Icon name="check_circle" />
                   {resolving ? 'Saving...' : 'Mark Resolved'}
@@ -278,33 +286,46 @@ function SupportPage() {
             </div>
 
             <div className="flex-1 space-y-6 overflow-y-auto p-8">
-              {activeViewTicket.messages.map((message, index) => (
-                <div key={`${message.from}-${index}`} className={`max-w-2xl rounded-2xl p-5 ${message.from === 'admin' ? 'ml-auto bg-primary text-white' : 'bg-white shadow-soft'}`}>
-                  <p className={`mb-2 text-[11px] font-bold uppercase tracking-widest ${message.from === 'admin' ? 'text-white/80' : 'text-secondary'}`}>
-                    {message.date}
-                  </p>
-                  <p className={`text-sm leading-relaxed ${message.from === 'admin' ? 'text-white' : 'text-on-surface'}`}>{message.text}</p>
-                </div>
-              ))}
+              {activeViewTicket.messages.length === 0 ? (
+                <p className="rounded-2xl bg-white px-5 py-4 text-sm text-secondary shadow-soft">No support messages found.</p>
+              ) : (
+                activeViewTicket.messages.map((message, index) => (
+                  <div key={`${message.from}-${index}`} className={`max-w-2xl rounded-2xl p-5 ${message.from === 'admin' ? 'ml-auto bg-primary text-white' : 'bg-white shadow-soft'}`}>
+                    <p className={`mb-2 text-[11px] font-bold uppercase tracking-widest ${message.from === 'admin' ? 'text-white/80' : 'text-secondary'}`}>
+                      {message.date}
+                    </p>
+                    <p className={`text-sm leading-relaxed ${message.from === 'admin' ? 'text-white' : 'text-on-surface'}`}>{message.text}</p>
+                    {message.attachments?.length ? (
+                      <div className="mt-3 space-y-1">
+                        {message.attachments.map((file, fileIndex) => (
+                          <p key={`${file.fileName}-${fileIndex}`} className={`text-xs font-semibold ${message.from === 'admin' ? 'text-white/80' : 'text-secondary'}`}>
+                            {file.fileName} ({formatFileSize(file.sizeBytes)})
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="border-t border-outline-variant/10 bg-white p-6">
               {requestState ? <p className="mb-3 text-xs font-semibold text-secondary">{requestState}</p> : null}
               {error ? <p className="mb-3 text-xs font-semibold text-error">{error}</p> : null}
+              {attachment ? <p className="mb-3 text-xs font-semibold text-secondary">Attached: {attachment.name}</p> : null}
               <div className="flex items-end gap-3 rounded-2xl border border-outline-variant/20 bg-surface-container-low p-3">
                 <div className="flex gap-2 pb-2">
-                  <button type="button" className="rounded-full p-2 transition-colors hover:bg-white"><Icon name="attach_file" /></button>
-                  <button type="button" className="rounded-full p-2 transition-colors hover:bg-white"><Icon name="image" /></button>
-                  <button type="button" className="rounded-full p-2 transition-colors hover:bg-white"><Icon name="mood" /></button>
+                  <input ref={fileInputRef} type="file" className="hidden" onChange={(event) => setAttachment(event.target.files?.[0] || null)} />
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-full p-2 transition-colors hover:bg-white" title="Attach file"><Icon name="attach_file" /></button>
                 </div>
                 <textarea
                   rows="2"
                   value={reply}
                   onChange={(event) => setReply(event.target.value)}
                   className="flex-1 resize-none border-none bg-transparent px-2 py-2 text-sm"
-                  placeholder="Shift + Enter to send"
+                  placeholder="Type a reply"
                 />
-                <button type="button" onClick={handleSendMessage} disabled={sending || !reply.trim()} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60">
+                <button type="button" onClick={handleSendMessage} disabled={sending || (!reply.trim() && !attachment)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60">
                   {sending ? 'Sending...' : 'Send Message'}
                   <Icon name="send" />
                 </button>
@@ -313,7 +334,7 @@ function SupportPage() {
           </>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-secondary">
-            Select a ticket to start reviewing support messages.
+            No support messages found.
           </div>
         )}
       </div>
@@ -355,12 +376,6 @@ function SupportPage() {
             ))}
           </div>
         </section>
-
-        <div className="mt-auto rounded-2xl border border-primary/10 bg-primary/5 p-4">
-          <p className="text-center text-[11px] font-medium text-primary">
-            Active support cases are synchronized live across the student and admin portals.
-          </p>
-        </div>
       </div>
     </AdminLayout>
   )

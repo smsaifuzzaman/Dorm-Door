@@ -6,13 +6,10 @@ function AdminSettingsPage() {
   const [profile, setProfile] = useState({
     name: '',
     phone: '',
-    department: '',
-    university: '',
     address: '',
     settings: {
       emailNotifications: true,
       pushNotifications: true,
-      smsNotifications: false,
     },
   })
   const [password, setPassword] = useState({ oldPassword: '', newPassword: '' })
@@ -26,13 +23,10 @@ function AdminSettingsPage() {
         setProfile({
           name: user.name || '',
           phone: user.phone || '',
-          department: user.department || '',
-          university: user.university || '',
           address: user.address || '',
           settings: {
             emailNotifications: user.settings?.emailNotifications ?? true,
             pushNotifications: user.settings?.pushNotifications ?? true,
-            smsNotifications: user.settings?.smsNotifications ?? false,
           },
         })
       })
@@ -101,14 +95,6 @@ function AdminSettingsPage() {
               <input name="phone" value={profile.phone} onChange={handleProfileChange} />
             </label>
             <label>
-              Department
-              <input name="department" value={profile.department} onChange={handleProfileChange} />
-            </label>
-            <label>
-              University
-              <input name="university" value={profile.university} onChange={handleProfileChange} />
-            </label>
-            <label>
               Address
               <input name="address" value={profile.address} onChange={handleProfileChange} />
             </label>
@@ -119,10 +105,6 @@ function AdminSettingsPage() {
             <label className="checkbox-inline">
               <input type="checkbox" name="settings.pushNotifications" checked={profile.settings.pushNotifications} onChange={handleProfileChange} />
               Push notifications
-            </label>
-            <label className="checkbox-inline">
-              <input type="checkbox" name="settings.smsNotifications" checked={profile.settings.smsNotifications} onChange={handleProfileChange} />
-              SMS notifications
             </label>
           </div>
 

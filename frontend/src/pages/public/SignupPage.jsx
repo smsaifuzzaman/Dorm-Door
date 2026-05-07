@@ -13,6 +13,7 @@ const initialState = {
   phone: '',
   department: '',
   university: '',
+  address: '',
 }
 
 function dashboardPathForRole(role) {
@@ -147,25 +148,39 @@ function SignupPage() {
               />
             </label>
 
-            <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
-              Department
-              <input
-                name="department"
-                value={form.department}
-                onChange={handleChange}
-                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm text-[#1c1b1b] placeholder:text-[#9d9a98] focus:ring-2 focus:ring-primary"
-              />
-            </label>
+            {form.role === 'student' ? (
+              <>
+                <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
+                  Department
+                  <input
+                    name="department"
+                    value={form.department}
+                    onChange={handleChange}
+                    className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm text-[#1c1b1b] placeholder:text-[#9d9a98] focus:ring-2 focus:ring-primary"
+                  />
+                </label>
 
-            <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary md:col-span-2">
-              University
-              <input
-                name="university"
-                value={form.university}
-                onChange={handleChange}
-                className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm text-[#1c1b1b] placeholder:text-[#9d9a98] focus:ring-2 focus:ring-primary"
-              />
-            </label>
+                <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary md:col-span-2">
+                  University
+                  <input
+                    name="university"
+                    value={form.university}
+                    onChange={handleChange}
+                    className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm text-[#1c1b1b] placeholder:text-[#9d9a98] focus:ring-2 focus:ring-primary"
+                  />
+                </label>
+              </>
+            ) : (
+              <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary md:col-span-2">
+                Address
+                <input
+                  name="address"
+                  value={form.address}
+                  onChange={handleChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm text-[#1c1b1b] placeholder:text-[#9d9a98] focus:ring-2 focus:ring-primary"
+                />
+              </label>
+            )}
 
             <div className="md:col-span-2">
               <button

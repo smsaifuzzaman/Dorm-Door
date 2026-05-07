@@ -15,24 +15,32 @@ const initialForm = {
 }
 
 function StudentReviewsPage() {
-  const [dorms, setDorms] = useState([])
-  const [rooms, setRooms] = useState([])
+  const [approvedApplications, setApprovedApplications] = useState([])
   const [reviews, setReviews] = useState([])
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    api.get('/dorms').then(({ data }) => setDorms(data.dorms)).catch(() => setDorms([]))
+    api.get('/applications')
+      .then(({ data }) => {
+        const approved = (data.applications || []).filter((application) => (
+          application.status === 'Approved' && application.dorm?._id && application.room?._id
+        ))
+        setApprovedApplications(approved)
+        setForm((prev) => ({
+          ...prev,
+          dorm: approved[0]?.dorm?._id || '',
+          room: approved[0]?.room?._id || '',
+        }))
+      })
+      .catch(() => setApprovedApplications([]))
     api.get('/reviews').then(({ data }) => setReviews(data.reviews)).catch(() => setReviews([]))
   }, [])
 
-  useEffect(() => {
-    if (!form.dorm) {
-      setRooms([])
-      return
-    }
-    api.get('/rooms', { params: { dormId: form.dorm } }).then(({ data }) => setRooms(data.rooms)).catch(() => setRooms([]))
-  }, [form.dorm])
+  const dorms = approvedApplications.map((application) => application.dorm)
+  const rooms = approvedApplications
+    .filter((application) => application.dorm?._id === form.dorm)
+    .map((application) => application.room)
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
@@ -45,7 +53,7 @@ function StudentReviewsPage() {
     try {
       await api.post('/reviews', {
         dorm: form.dorm,
-        room: form.room || undefined,
+        room: form.room,
         rating: {
           overall: Number(form.overall),
           cleanliness: Number(form.cleanliness),
@@ -87,8 +95,8 @@ function StudentReviewsPage() {
 
             <label>
               Room
-              <select name="room" value={form.room} onChange={handleChange}>
-                <option value="">Optional</option>
+              <select name="room" value={form.room} onChange={handleChange} required>
+                <option value="">Select approved room</option>
                 {rooms.map((room) => (
                   <option key={room._id} value={room._id}>{room.roomNumber}</option>
                 ))}
@@ -131,8 +139,9 @@ function StudentReviewsPage() {
             </label>
           </div>
 
-          <button type="submit" className="btn btn-primary">Submit Review</button>
+          <button type="submit" className="btn btn-primary" disabled={!approvedApplications.length}>Submit Review</button>
           {message ? <p className="form-message">{message}</p> : null}
+          {!approvedApplications.length ? <p className="form-message">You can submit a review after your application is approved and assigned a room.</p> : null}
         </form>
       </section>
 

@@ -19,7 +19,7 @@ function normalizeText(value) {
 
 export const listDocuments = asyncHandler(async (req, res) => {
   const query = {}
-  if (req.user.role === 'student') {
+  if (req.user.role === 'student' || req.user.role === 'admin') {
     query.student = req.user.id
   }
 

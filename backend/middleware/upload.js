@@ -1,7 +1,9 @@
 import multer from 'multer'
+import path from 'path'
 import { ApiError } from '../utils/apiError.js'
 
 const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024
+const MAX_PROFILE_IMAGE_FILE_SIZE = 3 * 1024 * 1024
 
 const allowedMimeTypes = new Set([
   'application/pdf',
@@ -33,6 +35,25 @@ const upload = multer({
   },
 })
 
+const profileImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_PROFILE_IMAGE_FILE_SIZE,
+    files: 1,
+  },
+  fileFilter(req, file, callback) {
+    const mimeType = String(file?.mimetype || '').toLowerCase()
+    const extension = path.extname(String(file?.originalname || '')).toLowerCase()
+
+    if (mimeType !== 'image/png' || extension !== '.png') {
+      callback(new ApiError(400, 'Only PNG profile pictures are allowed.'))
+      return
+    }
+
+    callback(null, true)
+  },
+})
+
 export function uploadDocumentFile(req, res, next) {
   upload.single('file')(req, res, (error) => {
     if (!error) {
@@ -47,6 +68,27 @@ export function uploadDocumentFile(req, res, next) {
       }
 
       next(new ApiError(400, error.message || 'File upload failed'))
+      return
+    }
+
+    next(error)
+  })
+}
+
+export function uploadProfilePng(req, res, next) {
+  profileImageUpload.single('profileImage')(req, res, (error) => {
+    if (!error) {
+      next()
+      return
+    }
+
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        next(new ApiError(400, 'Profile picture exceeds 3MB limit'))
+        return
+      }
+
+      next(new ApiError(400, error.message || 'Profile picture upload failed'))
       return
     }
 

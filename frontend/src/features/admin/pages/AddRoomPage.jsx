@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../components/layout/AdminLayout'
 import Icon from '../components/Icon'
-import { roomGallery, topbarAvatars } from '../data/dashboardData'
+import { topbarAvatars } from '../data/dashboardData'
 import { api } from '../../../api/client'
 
 const amenityOptions = [
@@ -52,11 +52,12 @@ function AddRoomPage() {
   const [seatCount, setSeatCount] = useState(1)
   const [price, setPrice] = useState('15000')
   const [roomNumber, setRoomNumber] = useState('')
-  const [floorLevel, setFloorLevel] = useState('2nd Floor')
+  const [floorLevel, setFloorLevel] = useState('')
   const [roomType, setRoomType] = useState('Single Room')
   const [building, setBuilding] = useState('')
   const [amenities, setAmenities] = useState(initialAmenities)
   const [uploadedName, setUploadedName] = useState('')
+  const [uploadedImageData, setUploadedImageData] = useState('')
   const [imageUrl, setImageUrl] = useState('')
 
   useEffect(() => {
@@ -112,20 +113,23 @@ function AddRoomPage() {
     setSaving(true)
 
     try {
-      await api.post('/rooms', {
-        dorm: building,
-        roomNumber: roomNumber.trim(),
-        floor: floorLevel,
-        type: roomType,
-        seatCount: Math.max(1, Number(seatCount || 1)),
-        occupiedSeats: 0,
-        priceMonthly: Math.max(0, Number(price || 0)),
-        amenities: selectedAmenities,
-        images: imageUrl.trim() ? [imageUrl.trim()] : [],
+      await api.post('/catalog-requests', {
+        type: 'room',
+        payload: {
+          dorm: building,
+          roomNumber: roomNumber.trim(),
+          floor: floorLevel.trim(),
+          type: roomType,
+          seatCount: Math.max(1, Number(seatCount || 1)),
+          occupiedSeats: 0,
+          priceMonthly: Math.max(0, Number(price || 0)),
+          amenities: selectedAmenities,
+          images: uploadedImageData ? [uploadedImageData] : imageUrl.trim() ? [imageUrl.trim()] : [],
+        },
       })
 
-      setMessage('Room created successfully. Redirecting...')
-      setTimeout(() => navigate('/admin/availability'), 500)
+      setMessage('Room request submitted for super admin approval. Redirecting...')
+      setTimeout(() => navigate('/admin/applications'), 500)
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to create room.')
     } finally {
@@ -137,10 +141,11 @@ function AddRoomPage() {
     setSeatCount(1)
     setPrice('15000')
     setRoomNumber('')
-    setFloorLevel('2nd Floor')
+    setFloorLevel('')
     setRoomType('Single Room')
     setAmenities(initialAmenities)
     setUploadedName('')
+    setUploadedImageData('')
     setImageUrl('')
     setMessage('')
     setError('')
@@ -206,18 +211,14 @@ function AddRoomPage() {
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label>Floor Level</Label>
-                  <select
+                  <input
+                    type="number"
+                    min="0"
                     value={floorLevel}
                     onChange={(e) => setFloorLevel(e.target.value)}
                     className="rounded-lg border-none bg-surface-container-high px-4 py-3 focus:ring-2 focus:ring-primary"
-                  >
-                    <option>Ground Floor</option>
-                    <option>1st Floor</option>
-                    <option>2nd Floor</option>
-                    <option>3rd Floor</option>
-                    <option>4th Floor</option>
-                    <option>Penthouse</option>
-                  </select>
+                    placeholder="e.g. 2"
+                  />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label>Room Type</Label>
@@ -310,10 +311,23 @@ function AddRoomPage() {
                 <p className="mt-1 text-xs text-secondary">{uploadedName || 'PNG, JPG up to 10MB'}</p>
                 <input
                   type="file"
+                  accept="image/*"
                   className="hidden"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     setUploadedName(file?.name || '')
+                    setUploadedImageData('')
+                    if (!file) return
+                    if (file.size > 3 * 1024 * 1024) {
+                      setError('Room image must be 3MB or smaller.')
+                      return
+                    }
+                    const reader = new FileReader()
+                    reader.onload = () => {
+                      setUploadedImageData(String(reader.result || ''))
+                      setImageUrl('')
+                    }
+                    reader.readAsDataURL(file)
                   }}
                 />
               </label>
@@ -322,16 +336,28 @@ function AddRoomPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-secondary">Image URL (Optional)</label>
                 <input
                   value={imageUrl}
-                  onChange={(event) => setImageUrl(event.target.value)}
+                  onChange={(event) => {
+                    setImageUrl(event.target.value)
+                    if (event.target.value.trim()) {
+                      setUploadedImageData('')
+                      setUploadedName('')
+                    }
+                  }}
                   placeholder="https://example.com/room.jpg"
                   className="mt-2 w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm focus:ring-2 focus:ring-primary"
                 />
               </div>
 
               <div className="mt-4 grid grid-cols-3 gap-2">
-                <div className="aspect-square overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-high">
-                  <img src={imageUrl || roomGallery[0]} alt="Room preview" className="h-full w-full object-cover" />
-                </div>
+                {(uploadedImageData || imageUrl.trim()) ? (
+                  <div className="aspect-square overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-high">
+                    <img src={uploadedImageData || imageUrl.trim()} alt="Room preview" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-high text-secondary">
+                    <Icon name="image" />
+                  </div>
+                )}
                 <div className="flex aspect-square items-center justify-center rounded-lg bg-surface-container-high">
                   <Icon name="add" className="text-secondary text-sm" />
                 </div>

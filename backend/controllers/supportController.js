@@ -11,8 +11,25 @@ async function notify(userId, title, message) {
   }
 }
 
+function normalizeText(value) {
+  return String(value || '').trim()
+}
+
+function attachmentFromFile(file) {
+  if (!file) return []
+  return [
+    {
+      fileName: normalizeText(file.originalname),
+      mimeType: normalizeText(file.mimetype),
+      sizeBytes: Number(file.size) || 0,
+      storageType: 'upload',
+    },
+  ]
+}
+
 export const createSupportTicket = asyncHandler(async (req, res) => {
   const { subject, description, priority = 'Medium' } = req.body
+  const attachments = attachmentFromFile(req.file)
 
   if (!subject || !description) {
     throw new ApiError(400, 'subject and description are required')
@@ -26,7 +43,8 @@ export const createSupportTicket = asyncHandler(async (req, res) => {
     messages: [
       {
         sender: req.user.id,
-        text: description,
+        text: normalizeText(description),
+        attachments,
       },
     ],
   })
@@ -54,9 +72,10 @@ export const listSupportTickets = asyncHandler(async (req, res) => {
 })
 
 export const addSupportMessage = asyncHandler(async (req, res) => {
-  const { text } = req.body
-  if (!text) {
-    throw new ApiError(400, 'text is required')
+  const text = normalizeText(req.body?.text)
+  const attachments = attachmentFromFile(req.file)
+  if (!text && attachments.length === 0) {
+    throw new ApiError(400, 'text or attachment is required')
   }
 
   const ticket = await SupportTicket.findById(req.params.id)
@@ -71,6 +90,7 @@ export const addSupportMessage = asyncHandler(async (req, res) => {
   ticket.messages.push({
     sender: req.user.id,
     text,
+    attachments,
   })
 
   await ticket.save()

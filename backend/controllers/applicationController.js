@@ -108,6 +108,16 @@ async function updateRoomOccupancy(roomId, delta) {
   return room
 }
 
+async function removeOtherDormApplicationsForStudent(application) {
+  if (!application?.student || !application?._id) return
+
+  await Application.deleteMany({
+    student: application.student,
+    _id: { $ne: application._id },
+    status: { $ne: 'Approved' },
+  })
+}
+
 async function validateAssignableRoom(roomId, dormId, shouldReserveSeat) {
   if (!roomId) return null
 
@@ -274,6 +284,10 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
   application.status = status
   application.adminNote = normalizeText(adminNote)
   await application.save()
+
+  if (status === 'Approved') {
+    await removeOtherDormApplicationsForStudent(application)
+  }
   await application.populate([
     { path: 'student', select: 'name email studentId department' },
     { path: 'dorm', select: 'name block' },

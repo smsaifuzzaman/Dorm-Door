@@ -56,7 +56,7 @@ function DocumentVerification() {
 
   const columns = useMemo(
     () => [
-      { key: 'student', label: 'Student Name', render: (row) => row.student?.name || 'Unknown Student' },
+      { key: 'student', label: 'User Name', render: (row) => row.student?.name || 'Unknown User' },
       { key: 'reference', label: 'Reference ID', render: (row) => row.student?.studentId || referenceId(row.application || row) },
       { key: 'category', label: 'Document Type' },
       { key: 'createdAt', label: 'Upload Date', render: (row) => formatDate(row.createdAt) },
@@ -83,7 +83,7 @@ function DocumentVerification() {
   )
 
   return (
-    <SuperAdminLayout title="Documents" subtitle="Verify or reject uploaded student documents.">
+    <SuperAdminLayout title="Documents" subtitle="Verify or reject uploaded user documents.">
       {error ? <p className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p> : null}
       {message ? <p className="mb-5 rounded-lg bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">{message}</p> : null}
 
@@ -92,7 +92,7 @@ function DocumentVerification() {
       {selectedDocument ? (
         <SimpleModal title="Document Details" onClose={() => setSelectedDocument(null)}>
           <div className="grid gap-4 text-sm text-slate-700 sm:grid-cols-2">
-            <p><strong>Student:</strong> {selectedDocument.student?.name || 'N/A'}</p>
+            <p><strong>User:</strong> {selectedDocument.student?.name || 'N/A'}</p>
             <p><strong>Reference ID:</strong> {selectedDocument.student?.studentId || referenceId(selectedDocument.application || selectedDocument)}</p>
             <p><strong>Type:</strong> {selectedDocument.category}</p>
             <p><strong>File:</strong> {selectedDocument.fileName}</p>

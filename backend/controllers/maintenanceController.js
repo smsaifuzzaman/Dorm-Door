@@ -1,3 +1,4 @@
+import { Application } from '../models/Application.js'
 import { MaintenanceTicket } from '../models/MaintenanceTicket.js'
 import { Notification } from '../models/Notification.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
@@ -18,10 +19,21 @@ export const createMaintenanceTicket = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'title and description are required')
   }
 
+  const approvedApplication = await Application.findOne({
+    student: req.user.id,
+    status: 'Approved',
+    dorm: dorm || { $exists: true },
+    room: room || { $exists: true },
+  })
+
+  if (!approvedApplication?.dorm || !approvedApplication?.room) {
+    throw new ApiError(403, 'You must be assigned to a dorm before submitting a maintenance request.')
+  }
+
   const ticket = await MaintenanceTicket.create({
     student: req.user.id,
-    dorm,
-    room,
+    dorm: approvedApplication.dorm,
+    room: approvedApplication.room,
     title,
     description,
     priority,

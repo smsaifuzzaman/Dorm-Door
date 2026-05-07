@@ -74,31 +74,6 @@ function TransactionsPage() {
     }
   }, [transactions])
 
-  const exportCsv = () => {
-    const header = ['Reference ID', 'Student', 'Dorm', 'Amount', 'Payment Method', 'Transaction ID', 'Status', 'Submitted']
-    const rows = filteredTransactions.map((transaction) => [
-      referenceId(transaction),
-      transaction.student?.name || 'Unknown Student',
-      transaction.dorm?.name || 'N/A',
-      String(transaction.amount || 0),
-      transaction.paymentMethod || 'N/A',
-      transaction.transactionId || 'N/A',
-      transaction.status || 'Pending',
-      formatDateTime(transaction.createdAt),
-    ])
-
-    const csv = [header, ...rows]
-      .map((line) => line.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
-      .join('\n')
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = 'dormdoor-transactions.csv'
-    link.click()
-    URL.revokeObjectURL(link.href)
-  }
-
   return (
     <AdminLayout
       activeKey="transactions"
@@ -126,13 +101,6 @@ function TransactionsPage() {
               className="inline-flex items-center gap-2 rounded-xl border border-[#ece7e4] bg-white px-5 py-3 text-sm font-bold text-slate-700"
             >
               <RefreshCw size={16} /> Refresh
-            </button>
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="rounded-xl bg-primary px-5 py-3 text-sm font-bold text-white shadow-soft"
-            >
-              Export CSV
             </button>
           </div>
         </div>
