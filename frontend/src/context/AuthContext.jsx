@@ -143,8 +143,19 @@ export function AuthProvider({ children }) {
     setUser(null)
   }
 
+  const updateUser = (updates) => {
+    setUser((currentUser) => {
+      const nextUser = {
+        ...(currentUser || {}),
+        ...(updates || {}),
+      }
+      localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
+      return nextUser
+    })
+  }
+
   const value = useMemo(
-    () => ({ token, user, loading, isAuthenticated: Boolean(user), login, signup, logout }),
+    () => ({ token, user, loading, isAuthenticated: Boolean(user), login, signup, logout, updateUser }),
     [token, user, loading],
   )
 

@@ -13,7 +13,17 @@ const documentSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['Student ID', 'Passport Photo', 'Admission Certificate', 'Health Document', 'Other'],
+      enum: [
+        'Student ID',
+        'Passport Photo',
+        'Admission Certificate',
+        'Health Document',
+        'National ID',
+        'Dorm License',
+        'Ownership Document',
+        'Trade License',
+        'Other',
+      ],
       default: 'Other',
     },
     fileName: {

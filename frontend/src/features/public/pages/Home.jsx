@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { api } from '../../../api/client'
 import DormCard from '../components/DormCard'
 import PageShell from '../components/PageShell'
-import { browseDorms, featuredDorms } from '../data/dormData'
+import { priceToNumber, toPublicDorms } from '../utils/dormMappers'
 
 const QUICK_FILTERS = [
   { key: 'building', icon: 'apartment', label: 'Building' },
@@ -13,13 +14,11 @@ const QUICK_FILTERS = [
 
 const HOME_BUDGET_CAP = 8000
 
-function priceToNumber(price) {
-  const numeric = String(price || '').replace(/[^\d]/g, '')
-  return numeric ? Number(numeric) : 0
-}
-
 function Home() {
   const navigate = useNavigate()
+  const [dorms, setDorms] = useState([])
+  const [loadingDorms, setLoadingDorms] = useState(true)
+  const [dormError, setDormError] = useState('')
   const [locationQuery, setLocationQuery] = useState('')
   const [selectedRoomType, setSelectedRoomType] = useState('All Room Types')
   const [activeQuickFilters, setActiveQuickFilters] = useState({
@@ -29,9 +28,34 @@ function Home() {
     amenities: false,
   })
 
+  useEffect(() => {
+    let mounted = true
+
+    async function loadDorms() {
+      setLoadingDorms(true)
+      setDormError('')
+
+      try {
+        const { data } = await api.get('/dorms')
+        if (mounted) setDorms(toPublicDorms(data.dorms || []))
+      } catch (requestError) {
+        if (mounted) setDormError(requestError.response?.data?.message || 'Dorm listings are unavailable right now.')
+      } finally {
+        if (mounted) setLoadingDorms(false)
+      }
+    }
+
+    loadDorms()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const featuredDorms = useMemo(() => dorms.slice(0, 6), [dorms])
+
   const roomTypeOptions = useMemo(
-    () => ['All Room Types', ...new Set(browseDorms.map((dorm) => dorm.type))],
-    [],
+    () => ['All Room Types', ...new Set(dorms.map((dorm) => dorm.type))],
+    [dorms],
   )
 
   const effectiveRoomType = useMemo(() => {
@@ -199,7 +223,7 @@ function Home() {
             </div>
             <div className="text-right">
               <p className="text-sm font-bold uppercase tracking-widest text-secondary">
-                Showing {filteredDorms.length} {filteredDorms.length === 1 ? 'match' : 'matches'}
+                Showing {loadingDorms ? '...' : filteredDorms.length} {filteredDorms.length === 1 ? 'match' : 'matches'}
               </p>
               <button type="button" onClick={goToBrowseWithFilters} className="group mt-2 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-primary md:ml-auto">
                 Search In Browse
@@ -208,7 +232,15 @@ function Home() {
             </div>
           </div>
 
-          {filteredDorms.length === 0 ? (
+          {dormError ? (
+            <div className="rounded-2xl bg-red-50 px-6 py-6 text-center text-sm font-semibold text-red-700">
+              {dormError}
+            </div>
+          ) : loadingDorms ? (
+            <div className="rounded-2xl bg-surface-container-low px-6 py-12 text-center">
+              <h3 className="text-xl font-bold text-on-surface">Loading dorms...</h3>
+            </div>
+          ) : filteredDorms.length === 0 ? (
             <div className="rounded-2xl bg-surface-container-low px-6 py-12 text-center">
               <h3 className="text-xl font-bold text-on-surface">No dorms match your current filters</h3>
               <p className="mt-3 text-secondary">Adjust location, room type, or quick filters and try again.</p>

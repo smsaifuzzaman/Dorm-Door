@@ -1,6 +1,4 @@
 import {
-  BarChart3,
-  BedDouble,
   Building2,
   ClipboardList,
   FileCheck2,
@@ -9,7 +7,6 @@ import {
   MessageSquare,
   ReceiptText,
   ShieldCheck,
-  Star,
   Users,
 } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
@@ -21,12 +18,9 @@ const items = [
   { label: 'Dorm Admins', to: '/super-admin/dorm-admins', icon: ShieldCheck },
   { label: 'Students', to: '/super-admin/students', icon: Users },
   { label: 'Applications', to: '/super-admin/applications', icon: ClipboardList },
-  { label: 'Rooms', to: '/super-admin/rooms', icon: BedDouble },
   { label: 'Transactions', to: '/super-admin/transactions', icon: ReceiptText },
   { label: 'Documents', to: '/super-admin/documents', icon: FileCheck2 },
   { label: 'Complaints', to: '/super-admin/complaints', icon: MessageSquare },
-  { label: 'Feedback', to: '/super-admin/feedback', icon: Star },
-  { label: 'Reports', to: '/super-admin/reports', icon: BarChart3 },
 ]
 
 function SuperAdminSidebar() {

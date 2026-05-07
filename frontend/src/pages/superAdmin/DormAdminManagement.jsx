@@ -17,6 +17,7 @@ const initialForm = {
   name: '',
   email: '',
   phone: '',
+  address: '',
   password: '',
   assignedDorm: '',
   accountStatus: 'active',
@@ -64,6 +65,7 @@ function DormAdminManagement() {
       name: admin.name || '',
       email: admin.email || '',
       phone: admin.phone || '',
+      address: admin.address || '',
       password: '',
       assignedDorm: admin.assignedDorm?._id || '',
       accountStatus: admin.accountStatus || 'active',
@@ -138,6 +140,7 @@ function DormAdminManagement() {
       { key: 'name', label: 'Name', render: (row) => <span className="font-black text-slate-950">{row.name}</span> },
       { key: 'email', label: 'Email' },
       { key: 'phone', label: 'Phone', render: (row) => row.phone || 'N/A' },
+      { key: 'address', label: 'Address', render: (row) => row.address || 'N/A' },
       { key: 'assignedDorm', label: 'Assigned Dorm', render: (row) => row.assignedDorm?.name || 'Unassigned' },
       { key: 'status', label: 'Status', render: (row) => <StatusBadge status={row.accountStatus === 'blocked' ? 'Blocked' : 'Active'} /> },
       {
@@ -197,6 +200,10 @@ function DormAdminManagement() {
               <input name="phone" value={form.phone} onChange={handleChange} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2" />
             </label>
             <label className="text-sm font-bold text-slate-600">
+              Address
+              <input name="address" value={form.address} onChange={handleChange} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2" />
+            </label>
+            <label className="text-sm font-bold text-slate-600">
               Password
               <input name="password" type="password" value={form.password} onChange={handleChange} placeholder={selectedAdmin ? 'Leave blank to keep current' : 'Default: Admin123!'} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2" />
             </label>
@@ -232,6 +239,7 @@ function DormAdminManagement() {
             <p><strong>Name:</strong> {selectedAdmin.name}</p>
             <p><strong>Email:</strong> {selectedAdmin.email}</p>
             <p><strong>Phone:</strong> {selectedAdmin.phone || 'N/A'}</p>
+            <p><strong>Address:</strong> {selectedAdmin.address || 'N/A'}</p>
             <p><strong>Assigned Dorm:</strong> {selectedAdmin.assignedDorm?.name || 'Unassigned'}</p>
             <p><strong>Status:</strong> {selectedAdmin.accountStatus === 'blocked' ? 'Blocked' : 'Active'}</p>
           </div>

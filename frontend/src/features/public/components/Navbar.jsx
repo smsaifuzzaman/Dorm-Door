@@ -1,5 +1,7 @@
 import { Link, NavLink } from 'react-router-dom'
 import { useLanguage } from '../../../context/LanguageContext'
+import { useAuth } from '../../../context/AuthContext'
+import { displayAvatarFor } from '../../../utils/avatar'
 
 const links = [
   { to: '/', label: 'Home' },
@@ -8,6 +10,9 @@ const links = [
 
 function Navbar({ buttonLabel = 'Login', buttonTo = '/login' }) {
   const { language, setLanguage } = useLanguage()
+  const { isAuthenticated, user } = useAuth()
+  const avatar = displayAvatarFor(user, 'U')
+  const dashboardTo = user?.role === 'admin' ? '/admin' : user?.role === 'superAdmin' ? '/super-admin/dashboard' : '/student'
 
   return (
     <nav className="fixed top-0 z-50 w-full bg-[#fcf9f8]/70 backdrop-blur-xl shadow-soft">
@@ -51,12 +56,23 @@ function Navbar({ buttonLabel = 'Login', buttonTo = '/login' }) {
             </button>
           </div>
 
-          <Link
-            to={buttonTo}
-            className="rounded-lg bg-gradient-to-br from-primary to-primary-container px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-105"
-          >
-            {buttonLabel}
-          </Link>
+          {isAuthenticated ? (
+            <Link
+              to={dashboardTo}
+              className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[#e5edf9] text-sm font-black text-[#0c56d0] ring-2 ring-white transition hover:scale-105"
+              aria-label="Open dashboard"
+              title={user?.name || 'Open dashboard'}
+            >
+              {avatar.image ? <img src={avatar.image} alt="" className="h-full w-full object-cover" /> : avatar.initials}
+            </Link>
+          ) : (
+            <Link
+              to={buttonTo}
+              className="rounded-lg bg-gradient-to-br from-primary to-primary-container px-6 py-2.5 text-sm font-semibold text-white shadow-md transition hover:scale-105"
+            >
+              {buttonLabel}
+            </Link>
+          )}
         </div>
       </div>
     </nav>

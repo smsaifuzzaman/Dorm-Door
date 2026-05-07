@@ -5,8 +5,11 @@ import SimpleModal from '../../components/superAdmin/SimpleModal'
 import StatusBadge from '../../components/superAdmin/StatusBadge'
 import SuperAdminLayout from '../../components/superAdmin/SuperAdminLayout'
 import {
+  approveCatalogRequest,
   approveApplication,
+  getCatalogRequests,
   getApplications,
+  rejectCatalogRequest,
   rejectApplication,
   waitlistApplication,
 } from '../../services/superAdminApi'
@@ -16,23 +19,29 @@ const statusOptions = ['All', 'Pending', 'Under Review', 'Approved', 'Rejected',
 
 function ApplicationManagement() {
   const [applications, setApplications] = useState([])
+  const [catalogRequests, setCatalogRequests] = useState([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [selectedApplication, setSelectedApplication] = useState(null)
+  const [selectedCatalogRequest, setSelectedCatalogRequest] = useState(null)
 
   const loadApplications = async () => {
     setLoading(true)
     setError('')
 
     try {
-      const { data } = await getApplications({
-        search,
-        status: statusFilter === 'All' ? undefined : statusFilter,
-      })
-      setApplications(data.applications || [])
+      const [{ data: applicationData }, { data: catalogData }] = await Promise.all([
+        getApplications({
+          search,
+          status: statusFilter === 'All' ? undefined : statusFilter,
+        }),
+        getCatalogRequests(),
+      ])
+      setApplications(applicationData.applications || [])
+      setCatalogRequests(catalogData.requests || [])
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to load applications')
     } finally {
@@ -60,6 +69,19 @@ function ApplicationManagement() {
       setMessage('Application updated successfully.')
     } catch (requestError) {
       setMessage(requestError.response?.data?.message || 'Failed to update application.')
+    }
+  }
+
+  const decideCatalogRequest = async (request, action) => {
+    const note = window.prompt('Admin note (optional):') || ''
+
+    try {
+      if (action === 'approve') await approveCatalogRequest(request._id, note)
+      if (action === 'reject') await rejectCatalogRequest(request._id, note)
+      await loadApplications()
+      setMessage('Catalog request updated successfully.')
+    } catch (requestError) {
+      setMessage(requestError.response?.data?.message || 'Failed to update catalog request.')
     }
   }
 
@@ -95,8 +117,52 @@ function ApplicationManagement() {
     [search, statusFilter],
   )
 
+  const catalogColumns = useMemo(
+    () => [
+      { key: 'type', label: 'Request Type', render: (row) => <span className="capitalize">{row.type}</span> },
+      {
+        key: 'name',
+        label: 'Name / Room',
+        render: (row) => (row.type === 'dorm' ? row.payload?.name || 'N/A' : row.payload?.roomNumber || 'N/A'),
+      },
+      { key: 'requestedBy', label: 'Dorm Admin', render: (row) => row.requestedBy?.name || 'N/A' },
+      { key: 'createdAt', label: 'Submitted', render: (row) => formatDate(row.createdAt) },
+      { key: 'status', label: 'Status', render: (row) => <StatusBadge status={row.status || 'Pending'} /> },
+      {
+        key: 'actions',
+        label: 'Actions',
+        render: (row) => (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setSelectedCatalogRequest(row)} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100" title="View">
+              <Eye size={16} />
+            </button>
+            {row.status === 'Pending' ? (
+              <>
+                <button type="button" onClick={() => decideCatalogRequest(row, 'approve')} className="rounded-lg p-2 text-emerald-700 hover:bg-emerald-50" title="Approve">
+                  <CheckCircle2 size={16} />
+                </button>
+                <button type="button" onClick={() => decideCatalogRequest(row, 'reject')} className="rounded-lg p-2 text-red-600 hover:bg-red-50" title="Reject">
+                  <XCircle size={16} />
+                </button>
+              </>
+            ) : null}
+          </div>
+        ),
+      },
+    ],
+    [],
+  )
+
   return (
     <SuperAdminLayout title="Applications" subtitle="Review applications separately from payment approval.">
+      <section className="mb-8">
+        <div className="mb-4">
+          <h3 className="text-xl font-black text-slate-950">Dorm and Room Requests</h3>
+          <p className="mt-1 text-sm text-slate-500">Approve dorm-admin catalog submissions before they enter the public website.</p>
+        </div>
+        <DataTable columns={catalogColumns} rows={catalogRequests} loading={loading} emptyMessage="No dorm or room requests found." />
+      </section>
+
       <div className="mb-6 grid gap-3 xl:grid-cols-[1fr_auto]">
         <form onSubmit={handleSearch} className="grid gap-3 md:grid-cols-[1fr_auto]">
           <label className="relative">
@@ -119,6 +185,28 @@ function ApplicationManagement() {
       {message ? <p className="mb-5 rounded-lg bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">{message}</p> : null}
 
       <DataTable columns={columns} rows={applications} loading={loading} emptyMessage="No applications found." />
+
+      {selectedCatalogRequest ? (
+        <SimpleModal title="Catalog Request Details" onClose={() => setSelectedCatalogRequest(null)}>
+          <div className="grid gap-4 text-sm text-slate-700 sm:grid-cols-2">
+            <p><strong>Type:</strong> {selectedCatalogRequest.type}</p>
+            <p><strong>Status:</strong> {selectedCatalogRequest.status}</p>
+            <p><strong>Requested By:</strong> {selectedCatalogRequest.requestedBy?.name || 'N/A'}</p>
+            <p><strong>Submitted:</strong> {formatDateTime(selectedCatalogRequest.createdAt)}</p>
+            {Object.entries(selectedCatalogRequest.payload || {}).map(([key, value]) => (
+              <p key={key} className="sm:col-span-2">
+                <strong>{key}:</strong>{' '}
+                {Array.isArray(value)
+                  ? value.map((item) => String(item).startsWith('data:image') ? 'Uploaded image' : item).join(', ')
+                  : String(value || '').startsWith('data:image')
+                    ? 'Uploaded image'
+                    : String(value || 'N/A')}
+              </p>
+            ))}
+            <p className="sm:col-span-2"><strong>Admin Note:</strong> {selectedCatalogRequest.adminNote || 'No note yet.'}</p>
+          </div>
+        </SimpleModal>
+      ) : null}
 
       {selectedApplication ? (
         <SimpleModal title="Application Details" onClose={() => setSelectedApplication(null)}>

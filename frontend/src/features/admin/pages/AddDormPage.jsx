@@ -16,6 +16,7 @@ function AddDormPage() {
     block: '',
     totalFloors: '',
     totalCapacity: '',
+    priceRange: '',
     address: '',
     description: '',
     rules: '',
@@ -30,16 +31,6 @@ function AddDormPage() {
 
   const updateField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const addCustomAmenity = () => {
-    const custom = window.prompt('Enter custom amenity name')
-    if (!custom) return
-    const trimmed = custom.trim()
-    if (!trimmed) return
-    if (!selected.includes(trimmed)) {
-      setSelected((prev) => [...prev, trimmed])
-    }
   }
 
   const addImageUrl = () => {
@@ -62,20 +53,24 @@ function AddDormPage() {
     setSaving(true)
 
     try {
-      await api.post('/dorms', {
-        name: form.name.trim(),
-        block: form.block.trim(),
-        address: form.address.trim(),
-        description: form.description.trim(),
-        rules: form.rules.trim(),
-        facilities: selected,
-        images,
-        totalFloors: Number(form.totalFloors || 1),
-        totalCapacity: Number(form.totalCapacity || 0),
-        status: 'active',
+      await api.post('/catalog-requests', {
+        type: 'dorm',
+        payload: {
+          name: form.name.trim(),
+          block: form.block.trim(),
+          address: form.address.trim(),
+          description: form.description.trim(),
+          rules: form.rules.trim(),
+          priceRange: form.priceRange.trim(),
+          facilities: selected,
+          images,
+          totalFloors: Number(form.totalFloors || 1),
+          totalCapacity: Number(form.totalCapacity || 0),
+          status: 'active',
+        },
       })
-      setMessage('Dorm created successfully. Redirecting...')
-      setTimeout(() => navigate('/admin/dorms'), 500)
+      setMessage('Dorm request submitted for super admin approval. Redirecting...')
+      setTimeout(() => navigate('/admin/applications'), 500)
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to create dorm.')
     } finally {
@@ -122,6 +117,7 @@ function AddDormPage() {
                 <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Block / Building</label><input value={form.block} onChange={(event) => updateField('block', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="e.g. North Wing - Block A" /></div>
                 <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Total Floor Count</label><input type="number" min="1" value={form.totalFloors} onChange={(event) => updateField('totalFloors', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="0" /></div>
                 <div><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Total Room Capacity</label><input type="number" min="0" value={form.totalCapacity} onChange={(event) => updateField('totalCapacity', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="0" /></div>
+                <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Price Range</label><input value={form.priceRange} onChange={(event) => updateField('priceRange', event.target.value)} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="BDT 5,000 - 12,000" /></div>
                 <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Address</label><textarea value={form.address} onChange={(event) => updateField('address', event.target.value)} className="mt-2 min-h-[120px] w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="Enter the full street address and campus proximity details..." /></div>
                 <div className="md:col-span-2"><label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Description</label><textarea value={form.description} onChange={(event) => updateField('description', event.target.value)} className="mt-2 min-h-[120px] w-full rounded-xl border-none bg-[#f1ecea] px-5 py-4" placeholder="Short description shown to students during browsing..." /></div>
               </div>
@@ -167,7 +163,6 @@ function AddDormPage() {
                   )
                 })}
               </div>
-              <button type="button" onClick={addCustomAmenity} className="mt-6 w-full rounded-xl border border-[#d8d2cf] px-5 py-4 text-lg font-semibold text-primary">Add Custom Amenity</button>
             </section>
           </div>
         </div>

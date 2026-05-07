@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../../../../api/client'
 import { useAuth } from '../../../../context/AuthContext'
 import { useLanguage } from '../../../../context/LanguageContext'
+import { displayAvatarFor } from '../../../../utils/avatar'
 import Icon from '../Icon'
 
 function formatNotificationTimestamp(value) {
@@ -17,21 +18,22 @@ function formatNotificationTimestamp(value) {
   })
 }
 
-function RoleAvatar({ symbol = 'A', className = '' }) {
+function RoleAvatar({ symbol = 'A', image = '', className = '' }) {
   return (
     <div
       aria-hidden="true"
-      className={`flex items-center justify-center rounded-full bg-[#e5edf9] font-extrabold text-[#0c56d0] ${className}`}
+      className={`flex items-center justify-center overflow-hidden rounded-full bg-[#e5edf9] font-extrabold text-[#0c56d0] ${className}`}
     >
-      {symbol}
+      {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : symbol}
     </div>
   )
 }
 
-function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', profileRole = 'Housing Authority', avatar: _avatar, brandText = '', showBrand = false }) {
+function Topbar({ searchPlaceholder = 'Search...', profileName = '', profileRole = 'Housing Authority', avatar: _avatar, brandText = '', showBrand = false, showSearch = false }) {
   const navigate = useNavigate()
   const { language, setLanguage } = useLanguage()
-  const { token, logout } = useAuth()
+  const { token, user, logout } = useAuth()
+  const avatar = displayAvatarFor(user, 'A')
   const isDemoUser = token === 'dormdoor_demo_token'
   const demoStorageKey = 'dormdoor_demo_admin_notifications'
 
@@ -208,14 +210,16 @@ function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', p
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#ece7e4] bg-white/75 px-8 py-4 backdrop-blur-xl">
       <div className="flex items-center gap-6">
         {showBrand && <h2 className="text-[18px] font-extrabold text-primaryDark">{brandText}</h2>}
-        <div className="relative">
-          <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder={searchPlaceholder}
-            className="w-80 rounded-full border-none bg-[#f1ecea] py-3 pl-11 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:bg-white focus:shadow-sm"
-          />
-        </div>
+        {showSearch ? (
+          <div className="relative">
+            <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              className="w-80 rounded-full border-none bg-[#f1ecea] py-3 pl-11 pr-4 text-sm text-slate-700 outline-none placeholder:text-slate-400 focus:bg-white focus:shadow-sm"
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-4">
@@ -327,10 +331,10 @@ function Topbar({ searchPlaceholder = 'Search...', profileName = 'Admin User', p
         <div className="mx-2 h-8 w-px bg-[#e8e1dc]" />
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-sm font-semibold text-[#1b1b1b]">{profileName}</p>
+            <p className="text-sm font-semibold text-[#1b1b1b]">{user?.name || profileName || 'Dorm Admin'}</p>
             <p className="text-[11px] text-secondary">{profileRole}</p>
           </div>
-          <RoleAvatar symbol="A" className="h-10 w-10 text-base shadow-sm" />
+          <RoleAvatar symbol={avatar.initials} image={avatar.image} className="h-10 w-10 text-base shadow-sm" />
         </div>
       </div>
     </header>

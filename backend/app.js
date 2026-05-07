@@ -9,6 +9,7 @@ import authRoutes from './routes/authRoutes.js'
 import dormRoutes from './routes/dormRoutes.js'
 import roomRoutes from './routes/roomRoutes.js'
 import applicationRoutes from './routes/applicationRoutes.js'
+import catalogRequestRoutes from './routes/catalogRequestRoutes.js'
 import documentRoutes from './routes/documentRoutes.js'
 import maintenanceRoutes from './routes/maintenanceRoutes.js'
 import supportRoutes from './routes/supportRoutes.js'
@@ -25,6 +26,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendDistPath = path.resolve(__dirname, '../frontend/dist')
 const frontendIndexPath = path.join(frontendDistPath, 'index.html')
+const uploadsPath = path.resolve(__dirname, 'uploads')
 
 const app = express()
 const serveFrontendAssets = express.static(frontendDistPath)
@@ -61,6 +63,7 @@ app.use(
 )
 app.use(express.json())
 app.use(morgan('dev'))
+app.use('/uploads', express.static(uploadsPath))
 
 function hasFrontendBuild() {
   return fs.existsSync(frontendIndexPath)
@@ -84,6 +87,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/dorms', dormRoutes)
 app.use('/api/rooms', roomRoutes)
 app.use('/api/applications', applicationRoutes)
+app.use('/api/catalog-requests', catalogRequestRoutes)
 app.use('/api/documents', documentRoutes)
 app.use('/api/maintenance', maintenanceRoutes)
 app.use('/api/support', supportRoutes)

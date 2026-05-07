@@ -211,14 +211,19 @@ async function syncAssignedDorm(adminId, dormId) {
   await Dorm.findByIdAndUpdate(dormId, { managedBy: adminId })
 }
 
+async function removeOtherDormApplicationsForStudent(application) {
+  if (!application?.student || !application?._id) return
+
+  await Application.deleteMany({
+    student: application.student,
+    _id: { $ne: application._id },
+    status: { $ne: 'Approved' },
+  })
+}
+
 export const getDashboardStats = asyncHandler(async (req, res) => {
   const stats = await buildDashboardStats()
   res.json({ success: true, stats })
-})
-
-export const getReports = asyncHandler(async (req, res) => {
-  const stats = await buildDashboardStats()
-  res.json({ success: true, reports: stats })
 })
 
 export const getAllDorms = asyncHandler(async (req, res) => {
@@ -339,6 +344,7 @@ export const createDormAdmin = asyncHandler(async (req, res) => {
   const name = normalizeText(req.body?.name)
   const email = normalizeText(req.body?.email).toLowerCase()
   const phone = normalizeText(req.body?.phone)
+  const address = normalizeText(req.body?.address)
   const password = normalizeText(req.body?.password) || 'Admin123!'
   const assignedDorm = normalizeText(req.body?.assignedDorm)
 
@@ -356,6 +362,7 @@ export const createDormAdmin = asyncHandler(async (req, res) => {
     email,
     password,
     phone,
+    address,
     role: 'admin',
     accountStatus: normalizeAccountStatus(req.body?.accountStatus),
     assignedDorm: assignedDorm || undefined,
@@ -372,7 +379,7 @@ export const updateDormAdmin = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Dorm admin not found')
   }
 
-  const fields = ['name', 'email', 'phone']
+  const fields = ['name', 'email', 'phone', 'address']
   fields.forEach((field) => {
     if (req.body[field] !== undefined) {
       admin[field] = field === 'email' ? normalizeText(req.body[field]).toLowerCase() : normalizeText(req.body[field])
@@ -547,6 +554,10 @@ export const updateApplicationDecision = asyncHandler(async (req, res) => {
   const previousStatus = application.status
   let freedRoomId = ''
 
+  if (status === 'Approved' && !application.room) {
+    throw new ApiError(400, 'Cannot approve application without an assigned room')
+  }
+
   if (previousStatus !== 'Approved' && status === 'Approved' && application.room) {
     const room = await Room.findById(application.room)
     if (room && room.status !== 'Maintenance' && room.status !== 'Unavailable') {
@@ -569,6 +580,10 @@ export const updateApplicationDecision = asyncHandler(async (req, res) => {
   application.status = status
   application.adminNote = normalizeText(adminNote)
   await application.save()
+
+  if (status === 'Approved') {
+    await removeOtherDormApplicationsForStudent(application)
+  }
 
   await notify(application.student, 'Application Updated', `Your application status is now ${status}.`, 'application')
 

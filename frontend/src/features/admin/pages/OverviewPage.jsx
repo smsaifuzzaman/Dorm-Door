@@ -124,27 +124,6 @@ function OverviewPage() {
     ]
   }, [overview])
 
-  const occupancyBars = useMemo(() => {
-    const totalSeats = overview?.totalSeats || 0
-    const occupiedSeats = overview?.occupiedSeats || 0
-    const availableSeats = Math.max(totalSeats - occupiedSeats, 0)
-    if (totalSeats === 0) {
-      return [16, 20, 24, 18, 22, 14]
-    }
-
-    const occupancyRatio = Math.max(0, Math.min(1, occupiedSeats / totalSeats))
-    const availableRatio = Math.max(0, Math.min(1, availableSeats / totalSeats))
-
-    return [
-      Math.round(40 + occupancyRatio * 90),
-      Math.round(30 + occupancyRatio * 100),
-      Math.round(38 + occupancyRatio * 104),
-      Math.round(26 + availableRatio * 90),
-      Math.round(50 + occupancyRatio * 120),
-      Math.round(24 + availableRatio * 80),
-    ]
-  }, [overview])
-
   return (
     <AdminLayout
       activeKey="overview"
@@ -155,6 +134,7 @@ function OverviewPage() {
         profileName: 'Admin Panel',
         profileRole: '',
         avatar: topbarAvatars.admin,
+        showSearch: false,
       }}
       contentClassName="p-8"
     >
@@ -195,8 +175,8 @@ function OverviewPage() {
           ))}
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-8 xl:grid-cols-12">
-          <div className="xl:col-span-7">
+        <div className="mt-12">
+          <div>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-[24px] font-extrabold">Recent Activity</h2>
               <button type="button" className="text-sm font-semibold text-primary">View All Operations</button>
@@ -247,41 +227,6 @@ function OverviewPage() {
                   </span>
                 </div>
               ))}
-            </div>
-          </div>
-
-          <div className="xl:col-span-5">
-            <h2 className="mb-4 text-[24px] font-extrabold">Occupancy Trend</h2>
-            <div className="rounded-3xl border border-[#ece7e4] bg-white p-8">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-secondary">Global Capacity</p>
-                  <p className="mt-2 text-5xl font-black text-primary">{loading ? '...' : `${overview?.occupancyRate ?? 0}%`}</p>
-                </div>
-                <div className="flex gap-2 text-xs font-bold">
-                  <span className="rounded-md bg-primary px-2 py-1 text-white">LIVE</span>
-                  <span className="rounded-md bg-slate-100 px-2 py-1 text-secondary">
-                    {loading ? '--' : `${overview?.occupiedSeats ?? 0}/${overview?.totalSeats ?? 0}`}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-10 flex items-end gap-4">
-                {occupancyBars.map((height, index) => (
-                  <div key={index} className={`w-12 rounded-t-2xl ${index === 4 ? 'bg-primary shadow-lg shadow-blue-500/20' : index === 5 ? 'border-2 border-dashed border-[#cbd7ec] bg-transparent' : 'bg-[#efebea]'}`} style={{ height: `${height}px` }} />
-                ))}
-                <div className="ml-auto flex h-20 w-20 items-center justify-center rounded-full bg-primary text-white shadow-soft">
-                  <Icon name="bolt" filled className="text-4xl" />
-                </div>
-              </div>
-              <div className="mt-8 flex items-center justify-between text-sm text-secondary">
-                <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-primary" />Occupied</span>
-                <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-full bg-[#efebea]" />Available</span>
-              </div>
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3 text-sm text-secondary">
-              <span className="rounded-full bg-white px-4 py-2 shadow-sm">Total Seats: {overview?.totalSeats ?? 0}</span>
-              <span className="rounded-full bg-white px-4 py-2 shadow-sm">Occupied: {overview?.occupiedSeats ?? 0}</span>
-              <span className="rounded-full bg-white px-4 py-2 shadow-sm">Available: {overview?.availableSeats ?? 0}</span>
             </div>
           </div>
         </div>

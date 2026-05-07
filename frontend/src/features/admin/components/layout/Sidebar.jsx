@@ -26,7 +26,7 @@ function Sidebar({ activeKey = 'overview' }) {
             <Icon name="domain" filled />
           </div>
           <div>
-            <h1 className="text-[18px] font-extrabold leading-tight text-primaryDark">The Atelier</h1>
+            <h1 className="text-[18px] font-extrabold leading-tight text-primaryDark">Dorm Door</h1>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.22em] text-secondary">
               Dorm Management
             </p>

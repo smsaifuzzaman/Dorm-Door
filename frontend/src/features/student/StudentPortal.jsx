@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { useLanguage } from '../../context/LanguageContext'
+import { displayAvatarFor } from '../../utils/avatar'
 import { toSafeExternalUrl } from '../../utils/url'
 
 const MENU = [
@@ -44,14 +45,14 @@ function Icon({ name, filled = false, className = '' }) {
   )
 }
 
-function Avatar({ symbol = 'S', size = 'sm', className = '' }) {
+function Avatar({ symbol = 'S', image = '', size = 'sm', className = '' }) {
   const sizeClass = size === 'lg' ? 'text-3xl' : 'text-base'
   return (
     <div
       aria-hidden="true"
-      className={`flex items-center justify-center rounded-full bg-[#e5edf9] font-extrabold text-[#0c56d0] ${sizeClass} ${className}`}
+      className={`flex items-center justify-center overflow-hidden rounded-full bg-[#e5edf9] font-extrabold text-[#0c56d0] ${sizeClass} ${className}`}
     >
-      {symbol}
+      {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : symbol}
     </div>
   )
 }
@@ -126,10 +127,11 @@ function formatNotificationTimestamp(value) {
   })
 }
 
-function Topbar({ placeholder = 'Search portal...' }) {
+function Topbar({ placeholder = 'Search portal...', showSearch = true }) {
   const navigate = useNavigate()
   const { language, setLanguage } = useLanguage()
   const { token, user, logout } = useAuth()
+  const avatar = displayAvatarFor(user, 'S')
   const isDemoUser = token === 'dormdoor_demo_token'
   const demoStorageKey = 'dormdoor_demo_student_notifications'
 
@@ -307,12 +309,16 @@ function Topbar({ placeholder = 'Search portal...' }) {
   return (
     <header className="fixed left-[250px] right-0 top-0 z-30 border-b border-[#ece8e6] bg-[#fcf9f8]/90 px-8 py-4 backdrop-blur">
       <div className="flex items-center justify-between gap-6">
-        <div className="fade-in w-full max-w-[410px] rounded-full bg-[#f4f1f0] px-5 py-3.5 text-[#9096a1] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center gap-3">
-            <Icon name="search" className="text-[17px] text-[#8f96a3]" />
-            <input className="w-full border-none bg-transparent outline-none placeholder:text-[#9198a5]" placeholder={placeholder} />
+        {showSearch ? (
+          <div className="fade-in w-full max-w-[410px] rounded-full bg-[#f4f1f0] px-5 py-3.5 text-[#9096a1] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.02)]">
+            <div className="flex items-center gap-3">
+              <Icon name="search" className="text-[17px] text-[#8f96a3]" />
+              <input className="w-full border-none bg-transparent outline-none placeholder:text-[#9198a5]" placeholder={placeholder} />
+            </div>
           </div>
-        </div>
+        ) : (
+          <div />
+        )}
 
         <div className="flex items-center gap-5">
           <div data-no-translate="true" className="hidden items-center gap-2 text-xs font-bold tracking-widest text-secondary md:flex">
@@ -423,7 +429,7 @@ function Topbar({ placeholder = 'Search portal...' }) {
             aria-label="Go to profile"
             title="Go to profile"
           >
-            <Avatar symbol="S" size="sm" className="h-11 w-11 ring-2 ring-white" />
+            <Avatar symbol={avatar.initials} image={avatar.image} size="sm" className="h-11 w-11 ring-2 ring-white" />
           </button>
         </div>
       </div>
@@ -431,10 +437,10 @@ function Topbar({ placeholder = 'Search portal...' }) {
   )
 }
 
-function PageFrame({ children, placeholder }) {
+function PageFrame({ children, placeholder, showSearch = true }) {
   return (
     <div className="min-h-screen bg-[#fcf9f8] text-[#1c1b1b]">
-      <Topbar placeholder={placeholder} />
+      <Topbar placeholder={placeholder} showSearch={showSearch} />
       <main className="ml-[250px] px-10 pb-10 pt-[102px]">{children}</main>
     </div>
   )
@@ -514,21 +520,13 @@ function DashboardPage({ setActivePage }) {
             localStorage.setItem(demoDocumentStorageKey, JSON.stringify(seedDocuments))
           }
           const demoOverview = {
-            applications: 2,
+            applications: 0,
             documents: demoDocuments.length,
             maintenanceTickets: 1,
             supportTickets: 1,
             reviews: 1,
             unreadNotifications: 2,
-            recentApplications: [
-              {
-                _id: 'demo-app-1',
-                dorm: { name: 'The Zenith Suite', block: 'Block A' },
-                room: { roomNumber: '402-A', type: 'Premium Studio' },
-                status: 'Under Review',
-                createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-              },
-            ],
+            recentApplications: [],
           }
           const demoNotifications = [
             {
@@ -629,36 +627,10 @@ function DashboardPage({ setActivePage }) {
   const verifiedDocumentCount = requiredDocuments.filter((item) => item.done).length
   const pendingDocumentCount = requiredDocuments.filter((item) => !item.item || item.item.status !== 'Verified').length
 
-  const recentActivity = []
-  if (recentApplication) {
-    recentActivity.push({
-      key: `application-${recentApplication._id}`,
-      title: `Application ${recentApplication.status?.toLowerCase() || 'created'}`,
-      time: recentApplication.createdAt,
-    })
-  }
-  notifications.slice(0, 2).forEach((notification) => {
-    recentActivity.push({
-      key: `notification-${notification._id}`,
-      title: notification.title,
-      time: notification.createdAt,
-    })
-  })
-
-  const formatShortDate = (value) => {
-    if (!value) return 'Recently'
-    const parsed = new Date(value)
-    if (Number.isNaN(parsed.getTime())) return 'Recently'
-    return parsed.toLocaleString('en-US', {
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const profileAvatar = displayAvatarFor({ ...user, ...profile }, 'S')
 
   return (
-    <PageFrame placeholder="Search resources...">
+    <PageFrame placeholder="Search resources..." showSearch={false}>
       {error ? <p className="mb-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
 
       <div className="grid grid-cols-4 gap-5">
@@ -808,7 +780,7 @@ function DashboardPage({ setActivePage }) {
               <button type="button" onClick={() => setActivePage('profile')} className="text-[12px] font-bold text-[#0c56d0]">EDIT</button>
             </div>
             <div className="text-center">
-              <Avatar symbol="S" size="lg" className="mx-auto h-24 w-24 ring-4 ring-[#f0edec]" />
+              <Avatar symbol={profileAvatar.initials} image={profileAvatar.image} size="lg" className="mx-auto h-24 w-24 ring-4 ring-[#f0edec]" />
               <h4 data-user-content="true" className="mt-4 text-[17px] font-extrabold tracking-[-0.04em]">{profile.name || user?.name || 'New Student'}</h4>
               <p data-user-content="true" className="mt-1 text-[13px] font-semibold text-[#0c56d0]">ID: {profile.studentId || 'Not assigned yet'}</p>
             </div>
@@ -816,31 +788,6 @@ function DashboardPage({ setActivePage }) {
               <div className="flex justify-between"><span className="text-[#7b818c]">Department</span><span data-user-content="true" className="font-semibold">{profile.department || 'Add in profile'}</span></div>
               <div className="flex justify-between"><span className="text-[#7b818c]">Phone</span><span data-user-content="true" className="font-semibold">{profile.phone || 'Add in profile'}</span></div>
               <div className="flex justify-between"><span className="text-[#7b818c]">Email</span><span data-user-content="true" className="font-semibold">{profile.email || user?.email || 'No email'}</span></div>
-            </div>
-          </section>
-
-          <section className="card-hover rounded-[28px] bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.03)] ring-1 ring-[#eeebea]">
-            <h3 className="text-[17px] font-extrabold tracking-[-0.04em]">Recent Activity</h3>
-            <div className="mt-5 space-y-5 text-[13px]">
-              {recentActivity.length === 0 ? (
-                <div className="flex gap-4">
-                  <span className="mt-2 h-2.5 w-2.5 rounded-full bg-[#9ca3af]" />
-                  <div>
-                    <p className="font-bold">No recent activity yet</p>
-                    <p className="text-[#7b818c]">Create your first application or upload documents to get started.</p>
-                  </div>
-                </div>
-              ) : (
-                recentActivity.map((item, index) => (
-                  <div key={item.key} className="flex gap-4">
-                    <span className={`mt-2 h-2.5 w-2.5 rounded-full ${index === 0 ? 'bg-[#0c56d0]' : 'bg-[#9ca3af]'}`} />
-                    <div>
-                      <p className="font-bold">{item.title}</p>
-                      <p className="text-[#7b818c]">{formatShortDate(item.time)}</p>
-                    </div>
-                  </div>
-                ))
-              )}
             </div>
           </section>
 
@@ -883,52 +830,16 @@ function RoomApplicationsPage() {
   const demoStorageKey = 'dormdoor_demo_student_applications'
   const demoTransactionStorageKey = 'dormdoor_demo_student_transactions'
 
-  const parseDemoApplications = (raw) => {
-    if (!raw) return null
-    try {
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : null
-    } catch {
-      return null
-    }
-  }
-
   useEffect(() => {
     async function fetchApplications() {
       setLoading(true)
       setError('')
 
       if (isDemoUser) {
-        const stored = parseDemoApplications(localStorage.getItem(demoStorageKey))
+        localStorage.removeItem(demoStorageKey)
         localStorage.removeItem(demoTransactionStorageKey)
+        setApplications([])
         setTransactions([])
-        if (stored) {
-          setApplications(stored)
-          setLoading(false)
-          return
-        }
-
-        const seed = [
-          {
-            _id: 'demo-app-1',
-            dorm: { name: 'The Zenith Suite', block: 'Block A' },
-            room: { roomNumber: '402-A', type: 'Premium Studio' },
-            status: 'Under Review',
-            createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-            preferences: { moveInDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString() },
-          },
-          {
-            _id: 'demo-app-2',
-            dorm: { name: 'Scholar Haven', block: 'Block B' },
-            room: { roomNumber: '205-C', type: 'Single Room' },
-            status: 'Approved',
-            createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-            preferences: { moveInDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() },
-          },
-        ]
-
-        localStorage.setItem(demoStorageKey, JSON.stringify(seed))
-        setApplications(seed)
         setLoading(false)
         return
       }
@@ -976,25 +887,9 @@ function RoomApplicationsPage() {
     [applications],
   )
 
-  const createDemoApplication = () => {
-    const createdAt = new Date()
-    const newItem = {
-      _id: `demo-app-${createdAt.getTime()}`,
-      dorm: { name: 'New Demo Dorm', block: 'Block C' },
-      room: { roomNumber: 'TBD', type: 'Single Room' },
-      status: 'Pending',
-      createdAt: createdAt.toISOString(),
-      preferences: {},
-    }
-
-    const next = [newItem, ...applications]
-    setApplications(next)
-    localStorage.setItem(demoStorageKey, JSON.stringify(next))
-  }
-
   const handleNewApplication = () => {
     if (isDemoUser) {
-      createDemoApplication()
+      setPaymentMessage('Demo mode does not create placeholder dorm applications. Use a real student account to apply to a live dorm.')
       return
     }
     navigate('/apply-now')
@@ -1250,7 +1145,7 @@ function RoomApplicationsPage() {
 
       {isDemoUser ? (
         <p className="mt-6 rounded-xl bg-[#eef3ff] px-4 py-3 text-sm font-semibold text-[#325ca8]">
-          Demo mode: new applications are stored locally in this browser.
+          Demo mode does not include placeholder dorm applications.
         </p>
       ) : null}
       {paymentMessage ? (
@@ -1422,46 +1317,17 @@ function PaymentsPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  const parseStoredList = (key) => {
-    try {
-      const raw = localStorage.getItem(key)
-      if (!raw) return null
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : null
-    } catch {
-      return null
-    }
-  }
-
-  const seedDemoApplications = () => {
-    return [
-      {
-        _id: 'demo-app-payment-1',
-        dorm: { name: 'The Zenith Suite', block: 'Block A' },
-        room: { roomNumber: '402-A', type: 'Premium Studio', priceMonthly: 10500 },
-        status: 'Approved',
-        paymentStatus: 'Not Submitted',
-        createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        preferences: { preferredRoomType: 'Premium Studio' },
-      },
-    ]
-  }
-
   const loadPayments = async () => {
     setLoading(true)
     setError('')
 
     try {
       if (isDemoUser) {
-        const storedApplications = parseStoredList(demoApplicationStorageKey)
+        localStorage.removeItem(demoApplicationStorageKey)
         localStorage.removeItem(demoTransactionStorageKey)
-        const nextApplications = storedApplications || seedDemoApplications()
-        if (!storedApplications) {
-          localStorage.setItem(demoApplicationStorageKey, JSON.stringify(nextApplications))
-        }
-        setApplications(nextApplications)
+        setApplications([])
         setTransactions([])
-        setSelectedApplicationId((current) => current || nextApplications[0]?._id || '')
+        setSelectedApplicationId('')
         return
       }
 
@@ -1770,6 +1636,7 @@ function MaintenancePage() {
   const { token } = useAuth()
   const isDemoUser = token === 'dormdoor_demo_token'
   const demoStorageKey = 'dormdoor_demo_student_maintenance'
+  const ticketFileInputRef = useRef(null)
 
   const initialForm = {
     title: '',
@@ -1778,7 +1645,9 @@ function MaintenancePage() {
   }
 
   const [tickets, setTickets] = useState([])
+  const [approvedApplication, setApprovedApplication] = useState(null)
   const [form, setForm] = useState(initialForm)
+  const [ticketAttachment, setTicketAttachment] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -1795,12 +1664,31 @@ function MaintenancePage() {
     }
   }
 
+  const parseDemoApplicationsForHousing = () => {
+    localStorage.removeItem('dormdoor_demo_student_applications')
+    return []
+  }
+
+  const loadApprovedHousing = async () => {
+    if (isDemoUser) {
+      const approved = parseDemoApplicationsForHousing().find((item) => item.status === 'Approved' && item.dorm && item.room)
+      setApprovedApplication(approved || null)
+      return approved || null
+    }
+
+    const { data } = await api.get('/applications')
+    const approved = (data.applications || []).find((item) => item.status === 'Approved' && item.dorm && item.room)
+    setApprovedApplication(approved || null)
+    return approved || null
+  }
+
   const fetchTickets = async () => {
     setLoading(true)
     setError('')
 
     try {
       if (isDemoUser) {
+        await loadApprovedHousing()
         const stored = parseDemoTickets()
         if (stored) {
           setTickets(stored)
@@ -1841,6 +1729,7 @@ function MaintenancePage() {
 
       const { data } = await api.get('/maintenance')
       setTickets(data.tickets || [])
+      await loadApprovedHousing()
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to load maintenance tickets')
     } finally {
@@ -1864,6 +1753,11 @@ function MaintenancePage() {
       return
     }
 
+    if (!approvedApplication) {
+      setError('You must be assigned to a dorm before submitting a maintenance request.')
+      return
+    }
+
     setSaving(true)
     setMessage('')
     setError('')
@@ -1876,6 +1770,8 @@ function MaintenancePage() {
           description: form.description.trim(),
           priority: form.priority,
           status: 'Pending',
+          dorm: approvedApplication.dorm,
+          room: approvedApplication.room,
           createdAt: new Date().toISOString(),
         }
 
@@ -1884,6 +1780,8 @@ function MaintenancePage() {
         localStorage.setItem(demoStorageKey, JSON.stringify(next))
       } else {
         await api.post('/maintenance', {
+          dorm: approvedApplication.dorm?._id || approvedApplication.dorm,
+          room: approvedApplication.room?._id || approvedApplication.room,
           title: form.title.trim(),
           description: form.description.trim(),
           priority: form.priority,
@@ -1892,6 +1790,8 @@ function MaintenancePage() {
       }
 
       setForm(initialForm)
+      setTicketAttachment(null)
+      if (ticketFileInputRef.current) ticketFileInputRef.current.value = ''
       setMessage('Maintenance request submitted successfully.')
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to submit maintenance request')
@@ -1952,6 +1852,11 @@ function MaintenancePage() {
       <div className="mt-8 grid grid-cols-1 gap-8 xl:grid-cols-[1fr_1.4fr]">
         <section className="rounded-[28px] bg-white p-8 ring-1 ring-[#efebea]">
           <h2 className="text-[24px] font-extrabold tracking-[-0.04em]">Report New Issue</h2>
+          {!approvedApplication ? (
+            <p className="mt-4 rounded-xl bg-[#fff7e6] px-4 py-3 text-sm font-semibold text-[#9a6510]">
+              You must be assigned to a dorm before submitting a maintenance request.
+            </p>
+          ) : null}
           <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
             <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
               Title
@@ -1991,10 +1896,22 @@ function MaintenancePage() {
               </select>
             </label>
 
+            <div>
+              <input ref={ticketFileInputRef} type="file" className="hidden" onChange={(event) => setTicketAttachment(event.target.files?.[0] || null)} />
+              <button
+                type="button"
+                onClick={() => ticketFileInputRef.current?.click()}
+                className="rounded-[18px] border border-[#d8d2cf] bg-white px-5 py-3 text-[13px] font-bold text-[#0c56d0]"
+              >
+                Upload Attachment
+              </button>
+              {ticketAttachment ? <p className="mt-2 text-xs font-semibold text-[#6b7280]">Attached: {ticketAttachment.name}</p> : null}
+            </div>
+
             <button
               type="submit"
-              disabled={saving}
-              className="rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:opacity-70"
+              disabled={saving || !approvedApplication}
+              className="rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
             >
               {saving ? 'Submitting...' : 'Submit Request'}
             </button>
@@ -2343,6 +2260,7 @@ function ReviewsPage() {
   const { token } = useAuth()
   const [dorms, setDorms] = useState([])
   const [rooms, setRooms] = useState([])
+  const [approvedApplications, setApprovedApplications] = useState([])
   const [myReviews, setMyReviews] = useState([])
   const [publishedReviews, setPublishedReviews] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2374,6 +2292,23 @@ function ReviewsPage() {
     }
   }
 
+  const parseDemoApplicationsForReviews = () => {
+    localStorage.removeItem('dormdoor_demo_student_applications')
+    return []
+  }
+
+  const uniqueDormsFromApplications = (applications = []) => {
+    const byId = new Map()
+    applications.forEach((application) => {
+      const dorm = application.dorm
+      const dormId = dorm?._id || dorm
+      if (dormId && !byId.has(dormId)) {
+        byId.set(dormId, typeof dorm === 'object' ? dorm : { _id: dormId, name: 'Approved dorm' })
+      }
+    })
+    return [...byId.values()]
+  }
+
   const fetchMyReviews = async () => {
     if (isDemoUser) {
       const parsed = parseDemoReviews(localStorage.getItem(demoStorageKey))
@@ -2397,9 +2332,22 @@ function ReviewsPage() {
       setError('')
 
       try {
-        const [{ data: dormData }] = await Promise.all([api.get('/dorms')])
-        const dormList = dormData.dorms || []
+        let approved = []
+        if (isDemoUser) {
+          approved = parseDemoApplicationsForReviews().filter((item) => item.status === 'Approved' && item.dorm && item.room)
+        } else {
+          const { data: applicationData } = await api.get('/applications')
+          approved = (applicationData.applications || []).filter((item) => item.status === 'Approved' && item.dorm && item.room)
+        }
+
+        setApprovedApplications(approved)
+        const dormList = uniqueDormsFromApplications(approved)
         setDorms(dormList)
+        setForm((prev) => ({
+          ...prev,
+          dorm: prev.dorm || dormList[0]?._id || '',
+          room: prev.room || approved[0]?.room?._id || '',
+        }))
 
         await Promise.all([fetchMyReviews(), fetchPublishedReviews()])
       } catch (requestError) {
@@ -2413,22 +2361,29 @@ function ReviewsPage() {
   }, [isDemoUser, token])
 
   useEffect(() => {
-    async function loadRooms() {
-      if (!form.dorm) {
-        setRooms([])
-        return
-      }
-
-      try {
-        const { data } = await api.get('/rooms', { params: { dormId: form.dorm } })
-        setRooms(data.rooms || [])
-      } catch {
-        setRooms([])
-      }
+    if (!form.dorm) {
+      setRooms([])
+      return
     }
 
-    loadRooms()
-  }, [form.dorm])
+    const byId = new Map()
+    approvedApplications
+      .filter((application) => (application.dorm?._id || application.dorm) === form.dorm)
+      .forEach((application) => {
+        const room = application.room
+        const roomId = room?._id || room
+        if (roomId && !byId.has(roomId)) {
+          byId.set(roomId, typeof room === 'object' ? room : { _id: roomId, roomNumber: 'Assigned room' })
+        }
+      })
+
+    const nextRooms = [...byId.values()]
+    setRooms(nextRooms)
+    setForm((prev) => ({
+      ...prev,
+      room: nextRooms.some((room) => room._id === prev.room) ? prev.room : nextRooms[0]?._id || '',
+    }))
+  }, [approvedApplications, form.dorm])
 
   useEffect(() => {
     fetchPublishedReviews(form.dorm).catch(() => {
@@ -2447,8 +2402,13 @@ function ReviewsPage() {
   const handleSubmit = async (event) => {
     event.preventDefault()
 
-    if (!form.dorm || !form.comment.trim()) {
-      setError('Dorm and review comment are required')
+    if (approvedApplications.length === 0) {
+      setError('You must be assigned to a dorm before submitting a review.')
+      return
+    }
+
+    if (!form.dorm || !form.room || !form.comment.trim()) {
+      setError('Dorm, room, and review comment are required')
       return
     }
 
@@ -2458,7 +2418,7 @@ function ReviewsPage() {
 
     const payload = {
       dorm: form.dorm,
-      room: form.room || undefined,
+      room: form.room,
       rating: {
         overall: Number(form.overall),
         cleanliness: Number(form.cleanliness),
@@ -2473,7 +2433,7 @@ function ReviewsPage() {
 
     try {
       if (isDemoUser) {
-        const dormName = dorms.find((dorm) => dorm._id === form.dorm)?.name || 'Demo Dorm'
+        const dormName = dorms.find((dorm) => dorm._id === form.dorm)?.name || 'Dorm'
         const roomName = rooms.find((room) => room._id === form.room)?.roomNumber || 'N/A'
         const created = {
           _id: `demo-review-${Date.now()}`,
@@ -2543,6 +2503,11 @@ function ReviewsPage() {
       <p className="mt-4 max-w-[880px] text-[16px] leading-8 text-[#546067]">
         Submit a room review and help other students make better housing decisions.
       </p>
+      {!loading && approvedApplications.length === 0 ? (
+        <p className="mt-6 rounded-xl bg-[#fff7e6] px-4 py-3 text-sm font-semibold text-[#9a6510]">
+          You must be assigned to a dorm before submitting a review.
+        </p>
+      ) : null}
 
       {loading ? <p className="mt-8 text-[16px] font-semibold text-[#546067]">Loading review tools...</p> : null}
       {error ? <p className="mt-6 rounded-xl bg-[#ffe9ec] px-4 py-3 text-sm font-semibold text-[#c73535]">{error}</p> : null}
@@ -2566,8 +2531,8 @@ function ReviewsPage() {
 
               <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
                 Room
-                <select name="room" value={form.room} onChange={handleChange} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm">
-                  <option value="">Optional</option>
+                <select name="room" value={form.room} onChange={handleChange} className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm" required>
+                  <option value="">Select room</option>
                   {rooms.map((room) => (
                     <option key={room._id} value={room._id}>{room.roomNumber} - {room.type}</option>
                   ))}
@@ -2601,7 +2566,7 @@ function ReviewsPage() {
               Post review anonymously
             </label>
 
-            <button type="submit" disabled={submitting} className="rounded-[18px] bg-[#0c56d0] px-8 py-3 text-[16px] font-bold text-white disabled:opacity-70">
+            <button type="submit" disabled={submitting || approvedApplications.length === 0} className="rounded-[18px] bg-[#0c56d0] px-8 py-3 text-[16px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-70">
               {submitting ? 'Submitting...' : 'Submit Review'}
             </button>
           </form>
@@ -2657,6 +2622,7 @@ function mapUserToProfileForm(profileUser = {}) {
     university: profileUser.university || '',
     phone: profileUser.phone || '',
     address: profileUser.address || '',
+    profileImage: profileUser.profileImage || '',
     emergencyContact: {
       name: profileUser.emergencyContact?.name || '',
       relation: profileUser.emergencyContact?.relation || '',
@@ -2665,7 +2631,6 @@ function mapUserToProfileForm(profileUser = {}) {
     settings: {
       emailNotifications: profileUser.settings?.emailNotifications ?? true,
       pushNotifications: profileUser.settings?.pushNotifications ?? true,
-      smsNotifications: profileUser.settings?.smsNotifications ?? false,
     },
   }
 }
@@ -2691,7 +2656,6 @@ function normalizeProfilePayload(form) {
     settings: {
       emailNotifications: Boolean(form.settings?.emailNotifications),
       pushNotifications: Boolean(form.settings?.pushNotifications),
-      smsNotifications: Boolean(form.settings?.smsNotifications),
     },
     studentId: String(form.studentId || '').trim(),
     email: String(form.email || '').trim(),
@@ -2706,6 +2670,7 @@ function toProfileUpdatePayload(form) {
     department: form.department,
     university: form.university,
     address: form.address,
+    profileImage: form.profileImage,
     emergencyContact: form.emergencyContact,
     settings: form.settings,
   }
@@ -2727,6 +2692,7 @@ function cacheAuthUserProfile(form) {
       department: form.department,
       university: form.university,
       address: form.address,
+      profileImage: form.profileImage,
       emergencyContact: form.emergencyContact,
       settings: form.settings,
     }
@@ -2737,7 +2703,7 @@ function cacheAuthUserProfile(form) {
 }
 
 function ProfilePage() {
-  const { token, user } = useAuth()
+  const { token, user, updateUser } = useAuth()
   const isDemoUser = token === 'dormdoor_demo_token'
   const [activeTab, setActiveTab] = useState('personal')
   const [loading, setLoading] = useState(true)
@@ -2861,6 +2827,7 @@ function ProfilePage() {
       if (isDemoUser) {
         localStorage.setItem(DEMO_PROFILE_STORAGE_KEY, JSON.stringify(normalizedForm))
         cacheAuthUserProfile(normalizedForm)
+        updateUser(normalizedForm)
         setForm(normalizedForm)
         setMessage(successText)
         return
@@ -2870,6 +2837,7 @@ function ProfilePage() {
       const nextProfile = mapUserToProfileForm(data.user || normalizedForm)
       setForm(nextProfile)
       cacheAuthUserProfile(nextProfile)
+      updateUser(nextProfile)
       setMessage(data.message || successText)
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to update profile')
@@ -3140,7 +3108,6 @@ function ProfilePage() {
               {[
                 ['emailNotifications', 'Email Notifications'],
                 ['pushNotifications', 'Push Notifications'],
-                ['smsNotifications', 'SMS Alerts'],
               ].map(([key, label]) => (
                 <label key={key} className="flex items-center justify-between rounded-[18px] bg-[#f7f4f3] px-5 py-4">
                   <span className="text-[15px] font-semibold text-[#2a2a2a]">{label}</span>
@@ -3192,6 +3159,8 @@ function SupportPage() {
   const { token } = useAuth()
   const isDemoUser = token === 'dormdoor_demo_token'
   const demoStorageKey = 'dormdoor_demo_student_support'
+  const ticketFileInputRef = useRef(null)
+  const replyFileInputRef = useRef(null)
 
   const initialTicket = {
     subject: '',
@@ -3201,8 +3170,10 @@ function SupportPage() {
 
   const [tickets, setTickets] = useState([])
   const [ticketForm, setTicketForm] = useState(initialTicket)
+  const [ticketAttachment, setTicketAttachment] = useState(null)
   const [activeTicketId, setActiveTicketId] = useState('')
   const [reply, setReply] = useState('')
+  const [replyAttachment, setReplyAttachment] = useState(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [sendingReply, setSendingReply] = useState(false)
@@ -3221,46 +3192,19 @@ function SupportPage() {
   }
 
   const seedDemoTickets = () => {
-    return [
-      {
-        _id: 'demo-support-1',
-        subject: 'Leaking pipe in Room 402B',
-        description: 'Leak under bathroom sink started this morning.',
-        priority: 'High',
-        status: 'Open',
-        createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        updatedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-        messages: [
-          {
-            sender: { name: 'Demo Student', role: 'student' },
-            text: 'Leak under bathroom sink started this morning.',
-            createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          },
-          {
-            sender: { name: 'Dorm Admin', role: 'admin' },
-            text: 'Thanks for reporting. Maintenance staff will visit shortly.',
-            createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-          },
-        ],
-      },
-      {
-        _id: 'demo-support-2',
-        subject: 'WiFi signal strength issues',
-        description: 'Signal drops every evening near study desk.',
-        priority: 'Medium',
-        status: 'Open',
-        createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        messages: [
-          {
-            sender: { name: 'Demo Student', role: 'student' },
-            text: 'Signal drops every evening near study desk.',
-            createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-          },
-        ],
-      },
-    ]
+    return []
   }
+
+  const fileToAttachment = (file) => (
+    file
+      ? [{
+          fileName: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          sizeBytes: file.size || 0,
+          storageType: 'upload',
+        }]
+      : []
+  )
 
   const fetchTickets = async () => {
     setLoading(true)
@@ -3333,6 +3277,7 @@ function SupportPage() {
             {
               sender: { name: 'Demo Student', role: 'student' },
               text: ticketForm.description.trim(),
+              attachments: fileToAttachment(ticketAttachment),
               createdAt: now,
             },
           ],
@@ -3343,15 +3288,20 @@ function SupportPage() {
         setActiveTicketId(created._id)
         localStorage.setItem(demoStorageKey, JSON.stringify(next))
       } else {
-        await api.post('/support', {
-          subject: ticketForm.subject.trim(),
-          description: ticketForm.description.trim(),
-          priority: ticketForm.priority,
+        const payload = new FormData()
+        payload.append('subject', ticketForm.subject.trim())
+        payload.append('description', ticketForm.description.trim())
+        payload.append('priority', ticketForm.priority)
+        if (ticketAttachment) payload.append('file', ticketAttachment)
+        await api.post('/support', payload, {
+          headers: { 'Content-Type': 'multipart/form-data' },
         })
         await fetchTickets()
       }
 
       setTicketForm(initialTicket)
+      setTicketAttachment(null)
+      if (ticketFileInputRef.current) ticketFileInputRef.current.value = ''
       setMessage('Support ticket created successfully.')
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to create support ticket')
@@ -3362,7 +3312,7 @@ function SupportPage() {
 
   const handleSendReply = async (event) => {
     event.preventDefault()
-    if (!activeTicket?._id || !reply.trim()) {
+    if (!activeTicket?._id || (!reply.trim() && !replyAttachment)) {
       return
     }
 
@@ -3383,6 +3333,7 @@ function SupportPage() {
               {
                 sender: { name: 'Demo Student', role: 'student' },
                 text: reply.trim(),
+                attachments: fileToAttachment(replyAttachment),
                 createdAt: now,
               },
             ],
@@ -3392,11 +3343,18 @@ function SupportPage() {
         setTickets(next)
         localStorage.setItem(demoStorageKey, JSON.stringify(next))
       } else {
-        await api.post(`/support/${activeTicket._id}/messages`, { text: reply.trim() })
+        const payload = new FormData()
+        payload.append('text', reply.trim())
+        if (replyAttachment) payload.append('file', replyAttachment)
+        await api.post(`/support/${activeTicket._id}/messages`, payload, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
         await fetchTickets()
       }
 
       setReply('')
+      setReplyAttachment(null)
+      if (replyFileInputRef.current) replyFileInputRef.current.value = ''
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to send reply')
     } finally {
@@ -3415,6 +3373,14 @@ function SupportPage() {
     const parsed = new Date(value)
     if (Number.isNaN(parsed.getTime())) return 'N/A'
     return parsed.toLocaleString()
+  }
+
+  const formatSupportFileSize = (value) => {
+    const bytes = Number(value) || 0
+    if (bytes <= 0) return 'N/A'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
   return (
@@ -3468,6 +3434,16 @@ function SupportPage() {
                 <option value="Urgent">Urgent</option>
               </select>
             </label>
+
+            {ticketAttachment ? <p className="text-xs font-semibold text-[#6b7280]">Attached: {ticketAttachment.name}</p> : null}
+            <input ref={ticketFileInputRef} type="file" className="hidden" onChange={(event) => setTicketAttachment(event.target.files?.[0] || null)} />
+            <button
+              type="button"
+              onClick={() => ticketFileInputRef.current?.click()}
+              className="rounded-[18px] border border-[#d8d2cf] bg-white px-5 py-3 text-[13px] font-bold text-[#0c56d0]"
+            >
+              Upload Attachment
+            </button>
 
             <button
               type="submit"
@@ -3540,6 +3516,15 @@ function SupportPage() {
                         {item.sender?.name || (isAdmin ? 'Admin' : 'Student')}
                       </p>
                       <p className="mt-2 text-[14px] leading-7">{item.text}</p>
+                      {item.attachments?.length ? (
+                        <div className="mt-3 space-y-1">
+                          {item.attachments.map((file, fileIndex) => (
+                            <p key={`${file.fileName}-${fileIndex}`} className="text-[12px] font-semibold opacity-75">
+                              {file.fileName} ({formatSupportFileSize(file.sizeBytes)})
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
                       <p className="mt-2 text-[11px] opacity-75">{formatDateTime(item.createdAt)}</p>
                     </div>
                   )
@@ -3547,6 +3532,7 @@ function SupportPage() {
               </div>
 
               <form className="mt-6" onSubmit={handleSendReply}>
+                {replyAttachment ? <p className="mb-2 text-xs font-semibold text-[#6b7280]">Attached: {replyAttachment.name}</p> : null}
                 <textarea
                   rows="4"
                   value={reply}
@@ -3554,9 +3540,17 @@ function SupportPage() {
                   placeholder="Type your reply here..."
                   className="w-full resize-none rounded-[18px] bg-[#f5f2f1] p-4 text-[15px] outline-none"
                 />
+                <input ref={replyFileInputRef} type="file" className="hidden" onChange={(event) => setReplyAttachment(event.target.files?.[0] || null)} />
+                <button
+                  type="button"
+                  onClick={() => replyFileInputRef.current?.click()}
+                  className="mt-4 mr-3 rounded-[18px] border border-[#d8d2cf] bg-white px-5 py-3 text-[13px] font-bold text-[#0c56d0]"
+                >
+                  Upload Attachment
+                </button>
                 <button
                   type="submit"
-                  disabled={sendingReply || !reply.trim()}
+                  disabled={sendingReply || (!reply.trim() && !replyAttachment)}
                   className="mt-4 rounded-[18px] bg-[#0c56d0] px-7 py-3 text-[15px] font-bold text-white disabled:opacity-70"
                 >
                   {sendingReply ? 'Sending...' : 'Send Reply'}

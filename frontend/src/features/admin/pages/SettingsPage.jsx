@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
 import Icon from '../components/Icon'
 import { api } from '../../../api/client'
+import { useAuth } from '../../../context/AuthContext'
+import { displayAvatarFor } from '../../../utils/avatar'
 
-function AdminAvatar({ className = '' }) {
+function AdminAvatar({ symbol = 'A', image = '', className = '' }) {
   return (
     <div
       aria-hidden="true"
-      className={`flex items-center justify-center rounded-xl bg-[#e5edf9] font-extrabold text-[#0c56d0] ${className}`}
+      className={`flex items-center justify-center overflow-hidden rounded-xl bg-[#e5edf9] font-extrabold text-[#0c56d0] ${className}`}
     >
-      A
+      {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : symbol}
     </div>
   )
 }
@@ -39,8 +41,11 @@ function Toggle({ checked, onChange }) {
 }
 
 function SettingsPage() {
+  const { updateUser } = useAuth()
+  const avatarInputRef = useRef(null)
   const [loading, setLoading] = useState(true)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -50,11 +55,11 @@ function SettingsPage() {
     role: 'Admin',
     email: '',
     phone: '',
+    address: '',
     profileImage: '',
     settings: {
       emailNotifications: true,
       pushNotifications: true,
-      smsNotifications: false,
     },
   })
 
@@ -85,11 +90,11 @@ function SettingsPage() {
           role: user.role === 'admin' ? 'Head Admin' : 'Student',
           email: user.email || '',
           phone: user.phone || '',
+          address: user.address || '',
           profileImage: user.profileImage || '',
           settings: {
             emailNotifications: user.settings?.emailNotifications ?? true,
             pushNotifications: user.settings?.pushNotifications ?? true,
-            smsNotifications: user.settings?.smsNotifications ?? false,
           },
         })
       } catch (requestError) {
@@ -125,6 +130,14 @@ function SettingsPage() {
       await api.patch('/profile', {
         name: profile.name,
         phone: profile.phone,
+        address: profile.address,
+        profileImage: profile.profileImage,
+        settings: profile.settings,
+      })
+      updateUser({
+        name: profile.name,
+        phone: profile.phone,
+        address: profile.address,
         profileImage: profile.profileImage,
         settings: profile.settings,
       })
@@ -133,6 +146,42 @@ function SettingsPage() {
       setError(requestError.response?.data?.message || 'Failed to save configuration.')
     } finally {
       setSavingProfile(false)
+    }
+  }
+
+  const avatar = displayAvatarFor(profile, 'A')
+
+  const handleAvatarSelect = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const isPng = file.type === 'image/png' && file.name.toLowerCase().endsWith('.png')
+    if (!isPng) {
+      setMessage('')
+      setError('Only PNG profile pictures are allowed.')
+      event.target.value = ''
+      return
+    }
+
+    setUploadingAvatar(true)
+    setMessage('')
+    setError('')
+
+    try {
+      const payload = new FormData()
+      payload.append('profileImage', file)
+      const { data } = await api.post('/profile/avatar', payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const profileImage = data.profileImage || data.user?.profileImage || ''
+      setProfile((prev) => ({ ...prev, profileImage }))
+      updateUser({ profileImage })
+      setMessage('Profile picture updated successfully.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to upload profile picture.')
+    } finally {
+      setUploadingAvatar(false)
+      event.target.value = ''
     }
   }
 
@@ -187,58 +236,37 @@ function SettingsPage() {
             {message ? <p className="mt-2 text-sm font-semibold text-primary">{message}</p> : null}
             {error ? <p className="mt-2 text-sm font-semibold text-error">{error}</p> : null}
           </div>
-          <div className="flex items-center gap-4 text-secondary">
-            <button type="button" className="rounded-full p-2 hover:bg-slate-100"><Icon name="notifications" /></button>
-            <button type="button" className="rounded-full p-2 hover:bg-slate-100"><Icon name="help_outline" /></button>
-          </div>
         </header>
 
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12">
           <section className="md:col-span-8 rounded-xl border border-[#ece7e4] bg-white p-8 flex flex-col md:flex-row gap-8 items-start">
             <div className="relative">
-              <AdminAvatar className="h-32 w-32 text-5xl" />
-              <button type="button" className="absolute -bottom-2 -right-2 rounded-lg bg-primary p-2 text-white shadow-lg"><Icon name="edit" className="text-sm" /></button>
+              <AdminAvatar symbol={avatar.initials} image={avatar.image} className="h-32 w-32 text-5xl" />
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept=".png,image/png"
+                className="hidden"
+                onChange={handleAvatarSelect}
+              />
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="absolute -bottom-2 -right-2 rounded-lg bg-primary p-2 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-70"
+                title="Upload profile picture"
+              >
+                <Icon name={uploadingAvatar ? 'hourglass_empty' : 'edit'} className="text-sm" />
+              </button>
             </div>
             <div className="grid flex-1 grid-cols-1 gap-6 md:grid-cols-2 w-full">
               <Field label="Full Name" value={profile.name} onChange={(event) => updateProfileField('name', event.target.value)} />
               <Field label="Role" value={profile.role} accent readOnly />
               <Field label="Email" value={profile.email} type="email" readOnly />
               <Field label="Phone Number" value={profile.phone} type="tel" onChange={(event) => updateProfileField('phone', event.target.value)} />
-            </div>
-          </section>
-
-          <section className="md:col-span-4 rounded-xl bg-[#f0edec] p-8 space-y-8">
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold flex items-center gap-2"><Icon name="tune" className="text-primary" /> Preferences</h3>
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Notification Frequency</label>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setPreferences((prev) => ({ ...prev, notificationFrequency: 'Instant' }))} className={`rounded-lg py-2 text-xs font-bold ${preferences.notificationFrequency === 'Instant' ? 'bg-primary text-white' : 'bg-white text-secondary'}`}>Instant</button>
-                  <button type="button" onClick={() => setPreferences((prev) => ({ ...prev, notificationFrequency: 'Daily Digest' }))} className={`rounded-lg py-2 text-xs font-bold ${preferences.notificationFrequency === 'Daily Digest' ? 'bg-primary text-white' : 'bg-white text-secondary'}`}>Daily Digest</button>
-                </div>
+              <div className="md:col-span-2">
+                <Field label="Address" value={profile.address} onChange={(event) => updateProfileField('address', event.target.value)} />
               </div>
-            </div>
-          </section>
-
-          <section className="md:col-span-6 rounded-xl border border-[#ece7e4] bg-white p-8 space-y-6">
-            <h3 className="text-lg font-bold flex items-center gap-2"><Icon name="settings" className="text-primary" /> System Configuration</h3>
-            <div className="flex items-center justify-between rounded-lg border border-red-100 bg-red-50 p-4">
-              <div>
-                <p className="text-sm font-bold text-red-700">Maintenance Mode</p>
-                <p className="text-xs text-red-500">Disable public portal access for updates.</p>
-              </div>
-              <Toggle checked={preferences.maintenanceMode} onChange={() => setPreferences((prev) => ({ ...prev, maintenanceMode: !prev.maintenanceMode }))} />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">Default Language</label>
-              <select value={preferences.defaultLanguage} onChange={(event) => setPreferences((prev) => ({ ...prev, defaultLanguage: event.target.value }))} className="mt-2 w-full rounded-lg border-none bg-[#f0edec] px-4 py-3">
-                <option>English (US)</option>
-                <option>Bengali</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-secondary">System Email Notifications</label>
-              <input value={preferences.systemEmail} onChange={(event) => setPreferences((prev) => ({ ...prev, systemEmail: event.target.value }))} className="mt-2 w-full rounded-lg border-none bg-[#f0edec] px-4 py-3" />
             </div>
           </section>
 
@@ -272,7 +300,7 @@ function SettingsPage() {
             <div className="flex items-center justify-between border-t border-[#e3ddda] pt-4">
               <div>
                 <p className="font-bold">Two-Factor Authentication</p>
-                <p className="text-xs text-secondary">Enhance account security via SMS/Email.</p>
+                <p className="text-xs text-secondary">Enhance account security for profile changes.</p>
               </div>
               <Toggle checked={preferences.twoFactor} onChange={() => setPreferences((prev) => ({ ...prev, twoFactor: !prev.twoFactor }))} />
             </div>
@@ -285,10 +313,6 @@ function SettingsPage() {
               <div className="flex items-center justify-between py-1">
                 <span>Push Notifications</span>
                 <Toggle checked={profile.settings.pushNotifications} onChange={() => updateSetting('pushNotifications', !profile.settings.pushNotifications)} />
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span>SMS Notifications</span>
-                <Toggle checked={profile.settings.smsNotifications} onChange={() => updateSetting('smsNotifications', !profile.settings.smsNotifications)} />
               </div>
             </div>
             <button type="button" onClick={changePassword} disabled={savingPassword} className="w-full rounded-lg bg-primary px-6 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70">

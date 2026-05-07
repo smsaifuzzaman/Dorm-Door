@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  BedDouble,
   Building2,
   ClipboardCheck,
   ClipboardList,
@@ -64,8 +63,6 @@ function SuperAdminDashboard() {
     ['Total Applications', stats.totalApplications, ClipboardList],
     ['Pending Applications', stats.pendingApplications, ClipboardList],
     ['Approved Applications', stats.approvedApplications, ClipboardCheck],
-    ['Total Rooms', stats.totalRooms, BedDouble],
-    ['Available Rooms', stats.availableRooms, BedDouble],
     ['Pending Transactions', stats.pendingTransactions, ReceiptText],
     ['Approved Transactions', stats.approvedTransactions, ReceiptText],
     ['Pending Documents', stats.pendingDocuments, FileClock],

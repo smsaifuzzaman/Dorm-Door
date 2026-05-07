@@ -606,36 +606,6 @@ function DormsPage() {
           </div>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <div className="overflow-hidden rounded-[2rem] bg-primary px-10 py-10 text-white lg:col-span-8">
-            <h3 className="max-w-xl text-5xl font-black leading-tight">
-              Maximize your capacity with Smart Allocation.
-            </h3>
-            <p className="mt-5 max-w-2xl text-lg text-white/85">
-              Our system gives you real-time occupancy visibility so you can adjust pricing and room allocation faster.
-            </p>
-            <button type="button" onClick={() => setSortBy('price-high')} className="mt-8 rounded-2xl bg-white px-8 py-4 text-lg font-semibold text-primary">
-              Prioritize Highest Value Rooms
-            </button>
-          </div>
-          <div className="rounded-[2rem] bg-[#f2efee] p-8 lg:col-span-4">
-            <h4 className="mb-6 text-[18px] font-extrabold">Quick Snapshot</h4>
-            <ul className="space-y-6 text-secondary">
-              <li>
-                <span className="block font-semibold text-[#1c1b1b]">Dorm Inventory</span>
-                {dorms.length} dorm buildings currently available in the system.
-              </li>
-              <li>
-                <span className="block font-semibold text-[#1c1b1b]">High Demand Alert</span>
-                {rooms.filter((room) => room.status === 'Full').length} rooms are currently full.
-              </li>
-              <li>
-                <span className="block font-semibold text-[#1c1b1b]">Maintenance Watch</span>
-                {rooms.filter((room) => room.status === 'Maintenance').length} rooms need maintenance handling.
-              </li>
-            </ul>
-          </div>
-        </div>
       </div>
 
       {editingRoomId ? (

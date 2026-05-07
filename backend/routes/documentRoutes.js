@@ -12,7 +12,7 @@ const router = Router()
 router.use(protect)
 
 router.get('/', listDocuments)
-router.post('/', authorize('student'), uploadDocumentFile, uploadDocumentMetadata)
-router.patch('/:id/review', authorize('admin'), reviewDocument)
+router.post('/', authorize('student', 'admin'), uploadDocumentFile, uploadDocumentMetadata)
+router.patch('/:id/review', authorize('superAdmin'), reviewDocument)
 
 export default router
