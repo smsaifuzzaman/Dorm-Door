@@ -1,8 +1,15 @@
+import { CatalogRequest } from '../models/CatalogRequest.js'
 import { Dorm } from '../models/Dorm.js'
 import { Room } from '../models/Room.js'
 import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
+
+const VISIBLE_DORM_STATUS_FILTER = { $nin: ['inactive', 'Inactive'] }
+
+function isDormInactive(dorm) {
+  return String(dorm?.status || '').toLowerCase() === 'inactive'
+}
 
 function deriveStatus(seatCount, occupiedSeats, requestedStatus) {
   if (requestedStatus === 'Maintenance' || requestedStatus === 'Unavailable') {
@@ -28,7 +35,18 @@ export const listRooms = asyncHandler(async (req, res) => {
   const { dormId, status, type, maxPrice } = req.query
   const query = {}
 
-  if (dormId) query.dorm = dormId
+  if (dormId) {
+    const dorm = await Dorm.findOne({ _id: dormId, status: VISIBLE_DORM_STATUS_FILTER }).select('_id').lean()
+    if (!dorm) {
+      res.json({ success: true, rooms: [] })
+      return
+    }
+    query.dorm = dorm._id
+  } else {
+    const activeDorms = await Dorm.find({ status: VISIBLE_DORM_STATUS_FILTER }).select('_id').lean()
+    query.dorm = { $in: activeDorms.map((dorm) => dorm._id) }
+  }
+
   if (status) query.status = status
   if (type) query.type = type
   if (maxPrice) query.priceMonthly = { $lte: Number(maxPrice) }
@@ -41,8 +59,8 @@ export const listRooms = asyncHandler(async (req, res) => {
 })
 
 export const getRoomById = asyncHandler(async (req, res) => {
-  const room = await Room.findById(req.params.id).populate('dorm', 'name block address')
-  if (!room) {
+  const room = await Room.findById(req.params.id).populate('dorm', 'name block address status')
+  if (!room || isDormInactive(room.dorm)) {
     throw new ApiError(404, 'Room not found')
   }
 
@@ -52,7 +70,7 @@ export const getRoomById = asyncHandler(async (req, res) => {
 export const createRoom = asyncHandler(async (req, res) => {
   const { dorm: dormId, roomNumber, seatCount = 1, occupiedSeats = 0, status } = req.body
 
-  const dorm = await Dorm.findById(dormId)
+  const dorm = await Dorm.findOne({ _id: dormId, status: VISIBLE_DORM_STATUS_FILTER })
   if (!dorm) {
     throw new ApiError(404, 'Dorm not found')
   }
@@ -64,23 +82,22 @@ export const createRoom = asyncHandler(async (req, res) => {
   )
   const finalStatus = deriveStatus(normalizedSeatCount, normalizedOccupiedSeats, status)
 
-  const room = await Room.create({
-    ...req.body,
-    seatCount: normalizedSeatCount,
-    occupiedSeats: normalizedOccupiedSeats,
-    status: finalStatus,
-    roomNumber,
+  const request = await CatalogRequest.create({
+    requestedBy: req.user.id,
+    type: 'room',
+    payload: {
+      ...req.body,
+      seatCount: normalizedSeatCount,
+      occupiedSeats: normalizedOccupiedSeats,
+      status: finalStatus,
+      roomNumber,
+    },
   })
-
-  const promotedApplications = await promoteWaitlistedApplicantsForRoom(room._id)
 
   res.status(201).json({
     success: true,
-    message: promotedApplications.length
-      ? `Room created. ${promotedApplications.length} waitlisted applicant promoted.`
-      : 'Room created',
-    room,
-    promotedApplications,
+    message: 'Room request submitted for super admin approval',
+    request,
   })
 })
 

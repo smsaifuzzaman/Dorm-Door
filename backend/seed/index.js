@@ -202,20 +202,6 @@ async function seed() {
     updates: [{ from: 'student', message: 'Issue reported by student.' }],
   })
 
-  await SupportTicket.create({
-    student: student._id,
-    subject: 'Need move-in date confirmation',
-    description: 'Can you confirm if early move-in is allowed?',
-    priority: 'Medium',
-    status: 'Open',
-    messages: [
-      {
-        sender: student._id,
-        text: 'Can you confirm if early move-in is allowed?',
-      },
-    ],
-  })
-
   await Review.create({
     student: student._id,
     dorm: dormA._id,

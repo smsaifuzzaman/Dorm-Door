@@ -173,7 +173,7 @@ function SettingsPage() {
       const { data } = await api.post('/profile/avatar', payload, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      const profileImage = data.profileImage || data.user?.profileImage || ''
+      const profileImage = data.avatar || data.profileImage || data.user?.profileImage || ''
       setProfile((prev) => ({ ...prev, profileImage }))
       updateUser({ profileImage })
       setMessage('Profile picture updated successfully.')

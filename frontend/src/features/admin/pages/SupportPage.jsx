@@ -225,7 +225,7 @@ function SupportPage() {
           {loading ? (
             <div className="px-5 py-6 text-sm text-secondary">Loading tickets...</div>
           ) : filteredTickets.length === 0 ? (
-            <div className="px-5 py-6 text-sm text-secondary">No support messages found.</div>
+            <div className="px-5 py-6 text-sm text-secondary">No support messages yet.</div>
           ) : filteredTickets.map((ticket) => {
             const active = ticket._id === (activeViewTicket?._id || '')
             const mapped = mapTicketToView(ticket)
@@ -287,7 +287,7 @@ function SupportPage() {
 
             <div className="flex-1 space-y-6 overflow-y-auto p-8">
               {activeViewTicket.messages.length === 0 ? (
-                <p className="rounded-2xl bg-white px-5 py-4 text-sm text-secondary shadow-soft">No support messages found.</p>
+                <p className="rounded-2xl bg-white px-5 py-4 text-sm text-secondary shadow-soft">No support messages yet.</p>
               ) : (
                 activeViewTicket.messages.map((message, index) => (
                   <div key={`${message.from}-${index}`} className={`max-w-2xl rounded-2xl p-5 ${message.from === 'admin' ? 'ml-auto bg-primary text-white' : 'bg-white shadow-soft'}`}>
@@ -334,7 +334,7 @@ function SupportPage() {
           </>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-secondary">
-            No support messages found.
+            No support messages yet.
           </div>
         )}
       </div>

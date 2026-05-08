@@ -5,7 +5,6 @@ import StudentLayout from '../../components/dashboard/StudentLayout'
 const initialForm = {
   dorm: '',
   room: '',
-  overall: 4,
   cleanliness: 4,
   security: 4,
   internet: 4,
@@ -55,7 +54,6 @@ function StudentReviewsPage() {
         dorm: form.dorm,
         room: form.room,
         rating: {
-          overall: Number(form.overall),
           cleanliness: Number(form.cleanliness),
           security: Number(form.security),
           internet: Number(form.internet),
@@ -101,11 +99,6 @@ function StudentReviewsPage() {
                   <option key={room._id} value={room._id}>{room.roomNumber}</option>
                 ))}
               </select>
-            </label>
-
-            <label>
-              Overall Rating
-              <input name="overall" type="number" min="1" max="5" value={form.overall} onChange={handleChange} required />
             </label>
 
             <label>

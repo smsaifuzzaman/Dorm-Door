@@ -5,7 +5,8 @@ import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
 import { api } from '../../../api/client'
 
-const STATUS_OPTIONS = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested']
+const FILTER_STATUS_OPTIONS = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Waitlisted', 'Re-upload Requested', 'Cancelled']
+const FINAL_STATUSES = new Set(['Approved', 'Rejected', 'Cancelled'])
 
 function getStatusStyle(status) {
   if (status === 'Pending') {
@@ -26,6 +27,20 @@ function getStatusStyle(status) {
     return {
       badge: 'bg-green-50 text-green-700 ring-green-700/10',
       dot: 'bg-green-700',
+    }
+  }
+
+  if (status === 'Waitlisted') {
+    return {
+      badge: 'bg-violet-50 text-violet-700 ring-violet-700/10',
+      dot: 'bg-violet-700',
+    }
+  }
+
+  if (status === 'Cancelled') {
+    return {
+      badge: 'bg-slate-100 text-slate-700 ring-slate-700/10',
+      dot: 'bg-slate-600',
     }
   }
 
@@ -69,7 +84,6 @@ function ApplicationsPage() {
   const [availableRooms, setAvailableRooms] = useState([])
   const [roomsLoading, setRoomsLoading] = useState(false)
   const [selectedRoomId, setSelectedRoomId] = useState('')
-  const [nextStatus, setNextStatus] = useState('Pending')
   const [adminNote, setAdminNote] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -155,7 +169,6 @@ function ApplicationsPage() {
     setSelectedApplication(app)
     setSelectedRoomId(app.room?._id || '')
     setAvailableRooms([])
-    setNextStatus(app.status || 'Pending')
     setAdminNote(app.adminNote || '')
     setRequestState('')
   }
@@ -204,25 +217,24 @@ function ApplicationsPage() {
 
   const handleStatusUpdate = async () => {
     if (!selectedApplication?._id) return
+    if (FINAL_STATUSES.has(selectedApplication.status)) {
+      setRequestState('This application already has a final super admin decision.')
+      return
+    }
+
     setSaving(true)
     setRequestState('')
 
     try {
       const { data } = await api.patch(`/applications/${selectedApplication._id}/status`, {
-        status: nextStatus,
+        status: selectedApplication.status || 'Pending',
         room: selectedRoomId || null,
         adminNote,
       })
 
       const updated = data.application
-      const updatedStudentId = updated.student?._id || selectedApplication.student?._id || selectedApplication.student
       setApplications((prev) =>
         prev
-          .filter((item) => {
-            if (updated.status !== 'Approved') return true
-            const itemStudentId = item.student?._id || item.student
-            return item._id === updated._id || String(itemStudentId) !== String(updatedStudentId) || item.status === 'Approved'
-          })
           .map((item) => (
             item._id === updated._id
               ? {
@@ -246,13 +258,17 @@ function ApplicationsPage() {
             }
           : prev,
       )
-      setRequestState('Application updated successfully.')
+      setRequestState('Room assignment saved. Super admin can approve or reject this application.')
     } catch (requestError) {
       setRequestState(requestError.response?.data?.message || 'Failed to update application.')
     } finally {
       setSaving(false)
     }
   }
+
+  const selectedApplicationIsFinal = selectedApplication
+    ? FINAL_STATUSES.has(selectedApplication.status)
+    : false
 
   return (
     <AdminLayout
@@ -343,7 +359,7 @@ function ApplicationsPage() {
           </label>
 
           <div className="flex flex-wrap gap-2">
-            {['All', ...STATUS_OPTIONS].map((status) => (
+            {['All', ...FILTER_STATUS_OPTIONS].map((status) => (
               <button
                 key={status}
                 type="button"
@@ -491,13 +507,13 @@ function ApplicationsPage() {
                 <select
                   value={selectedRoomId}
                   onChange={(event) => setSelectedRoomId(event.target.value)}
-                  disabled={roomsLoading}
+                  disabled={roomsLoading || selectedApplicationIsFinal}
                   className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <option value="">{roomsLoading ? 'Loading rooms...' : 'Select a room'}</option>
                   {availableRooms.map((room) => {
                     const isCurrentRoom = room._id === selectedApplication.room?._id
-                    const isUnavailable = !isCurrentRoom && (room.status === 'Full' || room.status === 'Maintenance')
+                    const isUnavailable = !isCurrentRoom && (room.status === 'Full' || room.status === 'Maintenance' || room.status === 'Unavailable')
                     const seatsLeft = Math.max(0, (room.seatCount || 0) - (room.occupiedSeats || 0))
                     return (
                       <option key={room._id} value={room._id} disabled={isUnavailable}>
@@ -508,21 +524,6 @@ function ApplicationsPage() {
                 </select>
               </label>
 
-              <label className="text-sm font-semibold text-secondary">
-                Update Status
-                <select
-                  value={nextStatus}
-                  onChange={(event) => setNextStatus(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
-                >
-                  {STATUS_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
               <label className="text-sm font-semibold text-secondary sm:col-span-2">
                 Admin Note
                 <textarea
@@ -530,10 +531,17 @@ function ApplicationsPage() {
                   onChange={(event) => setAdminNote(event.target.value)}
                   rows={4}
                   placeholder="Add note for student..."
-                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary"
+                  disabled={selectedApplicationIsFinal}
+                  className="mt-2 w-full rounded-lg border border-[#ece7e4] px-3 py-2 outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-70"
                 />
               </label>
             </div>
+
+            <p className="mt-4 text-sm font-semibold text-secondary">
+              {selectedApplicationIsFinal
+                ? 'This application already has a final super admin decision.'
+                : 'Dorm admins can assign rooms. Super admin handles approval and rejection.'}
+            </p>
 
             {requestState ? <p className="mt-4 text-sm font-semibold text-secondary">{requestState}</p> : null}
 
@@ -544,10 +552,10 @@ function ApplicationsPage() {
               <button
                 type="button"
                 onClick={handleStatusUpdate}
-                disabled={saving}
+                disabled={saving || selectedApplicationIsFinal}
                 className="rounded-lg bg-primary px-5 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {saving ? 'Saving...' : 'Update Application'}
+                {saving ? 'Saving...' : 'Save Assignment'}
               </button>
             </div>
           </div>

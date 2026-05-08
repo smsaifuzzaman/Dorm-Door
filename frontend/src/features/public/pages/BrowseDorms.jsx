@@ -30,6 +30,7 @@ function amenityIcon(label) {
 
 function BrowseDorms() {
   const [searchParams] = useSearchParams()
+  const queryMaxBudget = searchParams.get('maxBudget')
   const [dorms, setDorms] = useState([])
   const [loadingDorms, setLoadingDorms] = useState(true)
   const [dormError, setDormError] = useState('')
@@ -53,9 +54,9 @@ function BrowseDorms() {
     return fromQuery || 'All Types'
   })
   const [maxBudget, setMaxBudget] = useState(() => {
-    const fromQuery = Number(searchParams.get('maxBudget'))
+    const fromQuery = Number(queryMaxBudget)
     if (!Number.isFinite(fromQuery) || fromQuery <= 0) return 15000
-    return Math.max(2500, Math.min(fromQuery, 15000))
+    return Math.max(2500, fromQuery)
   })
   const [selectedAmenities, setSelectedAmenities] = useState(() => parseCsvParam(searchParams.get('amenities')))
   const [selectedStatuses, setSelectedStatuses] = useState(() =>
@@ -87,6 +88,17 @@ function BrowseDorms() {
       mounted = false
     }
   }, [])
+
+  const budgetCeiling = useMemo(() => {
+    const highestDormPrice = Math.max(0, ...dorms.map((dorm) => priceToNumber(dorm.price)))
+    return Math.max(15000, highestDormPrice)
+  }, [dorms])
+
+  useEffect(() => {
+    if (!queryMaxBudget && dorms.length) {
+      setMaxBudget(budgetCeiling)
+    }
+  }, [budgetCeiling, dorms.length, queryMaxBudget])
 
   const filteredDorms = useMemo(() => {
     const availabilityRank = {
@@ -232,7 +244,7 @@ function BrowseDorms() {
                 <input
                   type="range"
                   min={2500}
-                  max={15000}
+                  max={budgetCeiling}
                   step={500}
                   value={maxBudget}
                   onChange={(event) => setMaxBudget(Number(event.target.value))}
@@ -321,7 +333,7 @@ function BrowseDorms() {
             ) : (
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
                 {filteredDorms.map((dorm) => (
-                  <DormCard key={dorm.id} dorm={dorm} />
+                  <DormCard key={dorm.id} dorm={dorm} showStudentRating />
                 ))}
               </div>
             )}

@@ -17,6 +17,7 @@ const toneMap = {
   Unavailable: 'bg-slate-100 text-slate-700 ring-slate-700/10',
   Maintenance: 'bg-slate-100 text-slate-700 ring-slate-700/10',
   Waitlisted: 'bg-violet-50 text-violet-700 ring-violet-700/10',
+  Cancelled: 'bg-slate-100 text-slate-700 ring-slate-700/10',
 }
 
 function StatusBadge({ status = 'Pending' }) {

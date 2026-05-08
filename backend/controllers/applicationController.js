@@ -2,11 +2,15 @@ import { Application } from '../models/Application.js'
 import { Dorm } from '../models/Dorm.js'
 import { Room } from '../models/Room.js'
 import { Notification } from '../models/Notification.js'
+import { cancelOtherActiveApplicationsForStudent } from '../services/applicationLifecycleService.js'
 import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 
-const APPLICATION_STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested', 'Waitlisted']
+const APPLICATION_STATUSES = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Re-upload Requested', 'Waitlisted', 'Cancelled']
+const DORM_ADMIN_APPLICATION_STATUSES = ['Pending', 'Under Review', 'Re-upload Requested', 'Waitlisted']
+const SUPER_ADMIN_ONLY_STATUSES = ['Approved', 'Rejected', 'Cancelled']
+const VISIBLE_DORM_STATUS_FILTER = { $nin: ['inactive', 'Inactive'] }
 
 async function notify(userId, title, message, type) {
   try {
@@ -97,25 +101,40 @@ function nextRoomStatus(room) {
 async function updateRoomOccupancy(roomId, delta) {
   if (!roomId || delta === 0) return null
 
-  const room = await Room.findById(roomId)
+  if (delta > 0) {
+    const room = await Room.findOneAndUpdate(
+      {
+        _id: roomId,
+        status: { $nin: ['Maintenance', 'Unavailable'] },
+        $expr: { $lt: ['$occupiedSeats', '$seatCount'] },
+      },
+      { $inc: { occupiedSeats: 1 } },
+      { new: true },
+    )
+
+    if (!room) {
+      throw new ApiError(400, 'Cannot approve application: room is full or unavailable')
+    }
+
+    room.status = nextRoomStatus(room)
+    await room.save()
+    return room
+  }
+
+  const room = await Room.findByIdAndUpdate(
+    roomId,
+    { $inc: { occupiedSeats: delta } },
+    { new: true },
+  )
+
   if (!room) {
     throw new ApiError(404, 'Assigned room not found')
   }
 
-  room.occupiedSeats = Math.max(0, Math.min(room.seatCount, room.occupiedSeats + delta))
+  room.occupiedSeats = Math.max(0, Math.min(room.seatCount, room.occupiedSeats))
   room.status = nextRoomStatus(room)
   await room.save()
   return room
-}
-
-async function removeOtherDormApplicationsForStudent(application) {
-  if (!application?.student || !application?._id) return
-
-  await Application.deleteMany({
-    student: application.student,
-    _id: { $ne: application._id },
-    status: { $ne: 'Approved' },
-  })
 }
 
 async function validateAssignableRoom(roomId, dormId, shouldReserveSeat) {
@@ -155,7 +174,7 @@ export const createApplication = asyncHandler(async (req, res) => {
   })
   validateApplicationPayload(normalizedPayload)
 
-  const dormExists = await Dorm.findById(dorm)
+  const dormExists = await Dorm.findOne({ _id: dorm, status: VISIBLE_DORM_STATUS_FILTER })
   if (!dormExists) {
     throw new ApiError(404, 'Dorm not found')
   }
@@ -251,6 +270,21 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Application not found')
   }
 
+  if (SUPER_ADMIN_ONLY_STATUSES.includes(status)) {
+    throw new ApiError(
+      403,
+      'Dorm admins can assign rooms and update review status only. Super admin approval is required for final decisions.',
+    )
+  }
+
+  if (SUPER_ADMIN_ONLY_STATUSES.includes(application.status)) {
+    throw new ApiError(403, 'Applications with final super admin decisions cannot be changed by dorm admins.')
+  }
+
+  if (!DORM_ADMIN_APPLICATION_STATUSES.includes(status)) {
+    throw new ApiError(400, `Invalid dorm admin status. Allowed: ${DORM_ADMIN_APPLICATION_STATUSES.join(', ')}`)
+  }
+
   const previousStatus = application.status
   let freedRoomId = ''
   const wasApproved = previousStatus === 'Approved'
@@ -271,13 +305,13 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
     )
   }
 
+  if (isApproving && (approvalTransition || roomChanged)) {
+    await updateRoomOccupancy(nextRoomId, 1)
+  }
+
   if (wasApproved && (approvalTransition || roomChanged)) {
     await updateRoomOccupancy(application.room, -1)
     freedRoomId = application.room
-  }
-
-  if (isApproving && (approvalTransition || roomChanged)) {
-    await updateRoomOccupancy(nextRoomId, 1)
   }
 
   application.room = nextRoomId
@@ -286,7 +320,7 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
   await application.save()
 
   if (status === 'Approved') {
-    await removeOtherDormApplicationsForStudent(application)
+    await cancelOtherActiveApplicationsForStudent(application)
   }
   await application.populate([
     { path: 'student', select: 'name email studentId department' },

@@ -76,8 +76,12 @@ export function uploadDocumentFile(req, res, next) {
 }
 
 export function uploadProfilePng(req, res, next) {
-  profileImageUpload.single('profileImage')(req, res, (error) => {
+  profileImageUpload.fields([
+    { name: 'profileImage', maxCount: 1 },
+    { name: 'avatar', maxCount: 1 },
+  ])(req, res, (error) => {
     if (!error) {
+      req.file = req.files?.profileImage?.[0] || req.files?.avatar?.[0] || null
       next()
       return
     }
