@@ -7,6 +7,7 @@ import { Room } from '../models/Room.js'
 import { SupportTicket } from '../models/SupportTicket.js'
 import { Transaction } from '../models/Transaction.js'
 import { User } from '../models/User.js'
+import { cancelOtherActiveApplicationsForStudent } from '../services/applicationLifecycleService.js'
 import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
@@ -67,6 +68,40 @@ function deriveRoomStatus(seatCount, occupiedSeats, requestedStatus) {
   if (occupiedSeats >= seatCount) return 'Full'
   if (occupiedSeats > 0) return 'Limited'
   return 'Open'
+}
+
+async function reserveRoomSeat(roomId) {
+  const room = await Room.findOneAndUpdate(
+    {
+      _id: roomId,
+      status: { $nin: ['Maintenance', 'Unavailable'] },
+      $expr: { $lt: ['$occupiedSeats', '$seatCount'] },
+    },
+    { $inc: { occupiedSeats: 1 } },
+    { new: true },
+  )
+
+  if (!room) {
+    throw new ApiError(400, 'Cannot approve application: room is full or unavailable')
+  }
+
+  room.status = deriveRoomStatus(room.seatCount, room.occupiedSeats, room.status)
+  await room.save()
+  return room
+}
+
+async function releaseRoomSeat(roomId) {
+  const room = await Room.findByIdAndUpdate(
+    roomId,
+    { $inc: { occupiedSeats: -1 } },
+    { new: true },
+  )
+
+  if (!room) return null
+  room.occupiedSeats = Math.max(0, Math.min(room.seatCount, room.occupiedSeats))
+  room.status = deriveRoomStatus(room.seatCount, room.occupiedSeats, room.status)
+  await room.save()
+  return room
 }
 
 function roomUpdatePayload(body = {}) {
@@ -209,16 +244,6 @@ async function syncAssignedDorm(adminId, dormId) {
 
   await User.findByIdAndUpdate(adminId, { assignedDorm: dormId })
   await Dorm.findByIdAndUpdate(dormId, { managedBy: adminId })
-}
-
-async function removeOtherDormApplicationsForStudent(application) {
-  if (!application?.student || !application?._id) return
-
-  await Application.deleteMany({
-    student: application.student,
-    _id: { $ne: application._id },
-    status: { $ne: 'Approved' },
-  })
 }
 
 export const getDashboardStats = asyncHandler(async (req, res) => {
@@ -540,7 +565,7 @@ export const getAllApplications = asyncHandler(async (req, res) => {
 
 export const updateApplicationDecision = asyncHandler(async (req, res) => {
   const { status, adminNote = '' } = req.body
-  const allowedStatuses = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Waitlisted', 'Re-upload Requested']
+  const allowedStatuses = ['Pending', 'Under Review', 'Approved', 'Rejected', 'Waitlisted', 'Re-upload Requested', 'Cancelled']
 
   if (!allowedStatuses.includes(status)) {
     throw new ApiError(400, `Invalid status. Allowed: ${allowedStatuses.join(', ')}`)
@@ -559,22 +584,12 @@ export const updateApplicationDecision = asyncHandler(async (req, res) => {
   }
 
   if (previousStatus !== 'Approved' && status === 'Approved' && application.room) {
-    const room = await Room.findById(application.room)
-    if (room && room.status !== 'Maintenance' && room.status !== 'Unavailable') {
-      room.occupiedSeats = Math.min(room.seatCount, room.occupiedSeats + 1)
-      room.status = deriveRoomStatus(room.seatCount, room.occupiedSeats, room.status)
-      await room.save()
-    }
+    await reserveRoomSeat(application.room)
   }
 
   if (previousStatus === 'Approved' && status !== 'Approved' && application.room) {
-    const room = await Room.findById(application.room)
-    if (room) {
-      room.occupiedSeats = Math.max(0, room.occupiedSeats - 1)
-      room.status = deriveRoomStatus(room.seatCount, room.occupiedSeats, room.status)
-      await room.save()
-      freedRoomId = room._id
-    }
+    const room = await releaseRoomSeat(application.room)
+    if (room) freedRoomId = room._id
   }
 
   application.status = status
@@ -582,7 +597,7 @@ export const updateApplicationDecision = asyncHandler(async (req, res) => {
   await application.save()
 
   if (status === 'Approved') {
-    await removeOtherDormApplicationsForStudent(application)
+    await cancelOtherActiveApplicationsForStudent(application)
   }
 
   await notify(application.student, 'Application Updated', `Your application status is now ${status}.`, 'application')

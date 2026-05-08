@@ -523,7 +523,7 @@ function DashboardPage({ setActivePage }) {
             applications: 0,
             documents: demoDocuments.length,
             maintenanceTickets: 1,
-            supportTickets: 1,
+            supportTickets: 0,
             reviews: 1,
             unreadNotifications: 2,
             recentApplications: [],
@@ -862,12 +862,12 @@ function RoomApplicationsPage() {
   }, [isDemoUser, token])
 
   const activeApplications = useMemo(() => {
-    const statuses = new Set(['Pending', 'Under Review', 'Re-upload Requested'])
+    const statuses = new Set(['Pending', 'Under Review', 'Re-upload Requested', 'Waitlisted'])
     return applications.filter((item) => statuses.has(item.status))
   }, [applications])
 
   const historicalApplications = useMemo(() => {
-    const statuses = new Set(['Approved', 'Rejected'])
+    const statuses = new Set(['Approved', 'Rejected', 'Cancelled'])
     return applications.filter((item) => statuses.has(item.status))
   }, [applications])
 
@@ -883,7 +883,7 @@ function RoomApplicationsPage() {
   }, [applications])
 
   const pendingCount = useMemo(
-    () => applications.filter((item) => item.status === 'Pending' || item.status === 'Under Review').length,
+    () => applications.filter((item) => item.status === 'Pending' || item.status === 'Under Review' || item.status === 'Waitlisted').length,
     [applications],
   )
 
@@ -898,7 +898,9 @@ function RoomApplicationsPage() {
   const statusClasses = (status) => {
     if (status === 'Pending') return 'bg-[#fff2de] text-[#b7791f]'
     if (status === 'Under Review' || status === 'Re-upload Requested') return 'bg-[#e8f0f7] text-[#4e6875]'
+    if (status === 'Waitlisted') return 'bg-[#f0e8ff] text-[#6d46b8]'
     if (status === 'Approved') return 'bg-[#ecf7ef] text-[#23945b]'
+    if (status === 'Cancelled') return 'bg-[#eef1f4] text-[#5f6772]'
     return 'bg-[#feecef] text-[#d33434]'
   }
 
@@ -1408,6 +1410,7 @@ function PaymentsPage() {
   const statusClass = (status) => {
     if (status === 'Approved') return 'bg-[#ecf7ef] text-[#23945b]'
     if (status === 'Rejected') return 'bg-[#feecef] text-[#d33434]'
+    if (status === 'Cancelled') return 'bg-[#eef1f4] text-[#5f6772]'
     if (status === 'Pending') return 'bg-[#fff2de] text-[#b7791f]'
     return 'bg-[#e8f0f7] text-[#4e6875]'
   }
@@ -2256,6 +2259,25 @@ function DocumentsPage() {
   )
 }
 
+const REVIEW_RATING_KEYS = ['cleanliness', 'security', 'internet', 'maintenance']
+
+function normalizeReviewRating(value) {
+  const rating = Number(value)
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) return null
+  return Math.round(rating * 10) / 10
+}
+
+function calculateReviewOverall(rating = {}) {
+  const categoryRatings = REVIEW_RATING_KEYS.map((key) => normalizeReviewRating(rating[key]))
+
+  if (!categoryRatings.some((value) => value === null)) {
+    const total = categoryRatings.reduce((sum, value) => sum + value, 0)
+    return Math.round((total / categoryRatings.length) * 10) / 10
+  }
+
+  return normalizeReviewRating(rating.overall)
+}
+
 function ReviewsPage() {
   const { token } = useAuth()
   const [dorms, setDorms] = useState([])
@@ -2270,7 +2292,6 @@ function ReviewsPage() {
   const [form, setForm] = useState({
     dorm: '',
     room: '',
-    overall: 4,
     cleanliness: 4,
     security: 4,
     internet: 4,
@@ -2420,7 +2441,6 @@ function ReviewsPage() {
       dorm: form.dorm,
       room: form.room,
       rating: {
-        overall: Number(form.overall),
         cleanliness: Number(form.cleanliness),
         security: Number(form.security),
         internet: Number(form.internet),
@@ -2458,7 +2478,6 @@ function ReviewsPage() {
       setForm((prev) => ({
         ...prev,
         room: '',
-        overall: 4,
         cleanliness: 4,
         security: 4,
         internet: 4,
@@ -2474,9 +2493,14 @@ function ReviewsPage() {
   }
 
   const averageOverall = useMemo(() => {
-    if (!publishedReviews.length) return 0
-    const total = publishedReviews.reduce((sum, item) => sum + (item.rating?.overall || 0), 0)
-    return (total / publishedReviews.length).toFixed(1)
+    const ratings = publishedReviews
+      .map((item) => calculateReviewOverall(item.rating))
+      .filter((rating) => rating !== null)
+
+    if (!ratings.length) return '0.0'
+
+    const total = ratings.reduce((sum, rating) => sum + rating, 0)
+    return (total / ratings.length).toFixed(1)
   }, [publishedReviews])
 
   const renderRatingField = (label, key) => (
@@ -2541,7 +2565,6 @@ function ReviewsPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {renderRatingField('Overall', 'overall')}
               {renderRatingField('Cleanliness', 'cleanliness')}
               {renderRatingField('Security', 'security')}
               {renderRatingField('Internet', 'internet')}
@@ -2576,7 +2599,7 @@ function ReviewsPage() {
           <section className="rounded-[28px] bg-[#0c56d0] p-6 text-white shadow-[0_12px_24px_rgba(12,86,208,0.18)]">
             <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-white/70">Published Reviews</p>
             <h3 className="mt-4 text-[42px] font-extrabold leading-none">{publishedReviews.length}</h3>
-            <p className="mt-2 text-[15px] text-white/85">Average overall rating: {averageOverall || '0.0'}/5</p>
+            <p className="mt-2 text-[15px] text-white/85">Average overall rating: {averageOverall}/5</p>
           </section>
 
           <section className="rounded-[28px] bg-white p-6 ring-1 ring-[#efebea]">
@@ -2588,7 +2611,7 @@ function ReviewsPage() {
                 myReviews.slice(0, 5).map((item) => (
                   <div key={item._id} className="rounded-[18px] bg-[#f7f4f3] p-4">
                     <p className="text-[15px] font-bold">{item.dorm?.name || 'Dorm'}</p>
-                    <p className="mt-1 text-[13px] text-[#6b7280]">Overall: {item.rating?.overall || '-'} / 5</p>
+                    <p className="mt-1 text-[13px] text-[#6b7280]">Overall: {calculateReviewOverall(item.rating)?.toFixed(1) || '-'} / 5</p>
                     <p className="mt-2 text-[14px] text-[#546067]">{item.comment}</p>
                     <p className="mt-2 text-[12px] font-semibold text-[#7b818c]">{item.status || 'Published'} • {new Date(item.createdAt).toLocaleDateString()}</p>
                   </div>
@@ -2705,9 +2728,11 @@ function cacheAuthUserProfile(form) {
 function ProfilePage() {
   const { token, user, updateUser } = useAuth()
   const isDemoUser = token === 'dormdoor_demo_token'
+  const avatarInputRef = useRef(null)
   const [activeTab, setActiveTab] = useState('personal')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [form, setForm] = useState(() => mapUserToProfileForm(user || {}))
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -2846,6 +2871,49 @@ function ProfilePage() {
     }
   }
 
+  const handleAvatarSelect = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const isPng = file.type === 'image/png' && file.name.toLowerCase().endsWith('.png')
+    if (!isPng) {
+      setMessage('')
+      setError('Only PNG profile pictures are allowed.')
+      event.target.value = ''
+      return
+    }
+
+    if (isDemoUser) {
+      setMessage('')
+      setError('Profile picture upload requires a real student account connected to the backend.')
+      event.target.value = ''
+      return
+    }
+
+    setUploadingAvatar(true)
+    setMessage('')
+    setError('')
+
+    try {
+      const payload = new FormData()
+      payload.append('profileImage', file)
+      const { data } = await api.post('/profile/avatar', payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      const profileImage = data.avatar || data.profileImage || data.user?.profileImage || ''
+      const nextForm = { ...form, profileImage }
+      setForm(nextForm)
+      cacheAuthUserProfile(nextForm)
+      updateUser({ profileImage })
+      setMessage(data.message || 'Profile picture uploaded successfully.')
+    } catch (requestError) {
+      setError(requestError.response?.data?.message || 'Failed to upload profile picture.')
+    } finally {
+      setUploadingAvatar(false)
+      event.target.value = ''
+    }
+  }
+
   const handlePasswordChange = (event) => {
     const { name, value } = event.target
     setPasswordForm((prev) => ({ ...prev, [name]: value }))
@@ -2916,6 +2984,8 @@ function ProfilePage() {
     setError('Account deactivation is not enabled yet. Please contact support.')
   }
 
+  const profileAvatar = displayAvatarFor(form, 'S')
+
   return (
     <PageFrame placeholder="Search profile settings...">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -2954,6 +3024,24 @@ function ProfilePage() {
           <div>
             <h2 className="text-[28px] font-extrabold tracking-[-0.04em]">Personal Information</h2>
             <p className="mt-2 text-[15px] text-[#546067]">Keep your core academic profile details up to date.</p>
+            <div className="mt-6 flex flex-wrap items-center gap-4">
+              <Avatar symbol={profileAvatar.initials} image={profileAvatar.image} size="lg" className="h-20 w-20" />
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept=".png,image/png"
+                className="hidden"
+                onChange={handleAvatarSelect}
+              />
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="rounded-xl bg-[#0c56d0] px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {uploadingAvatar ? 'Uploading...' : 'Upload PNG Photo'}
+              </button>
+            </div>
             <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2">
               <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
                 Full Name
@@ -3158,7 +3246,6 @@ function ProfilePage() {
 function SupportPage() {
   const { token } = useAuth()
   const isDemoUser = token === 'dormdoor_demo_token'
-  const demoStorageKey = 'dormdoor_demo_student_support'
   const ticketFileInputRef = useRef(null)
   const replyFileInputRef = useRef(null)
 
@@ -3180,47 +3267,15 @@ function SupportPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  const parseDemoTickets = () => {
-    try {
-      const raw = localStorage.getItem(demoStorageKey)
-      if (!raw) return null
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : null
-    } catch {
-      return null
-    }
-  }
-
-  const seedDemoTickets = () => {
-    return []
-  }
-
-  const fileToAttachment = (file) => (
-    file
-      ? [{
-          fileName: file.name,
-          mimeType: file.type || 'application/octet-stream',
-          sizeBytes: file.size || 0,
-          storageType: 'upload',
-        }]
-      : []
-  )
-
   const fetchTickets = async () => {
     setLoading(true)
     setError('')
 
     try {
       if (isDemoUser) {
-        const stored = parseDemoTickets()
-        const next = stored || seedDemoTickets()
-        if (!stored) {
-          localStorage.setItem(demoStorageKey, JSON.stringify(next))
-        }
-        setTickets(next)
-        if (next.length && !activeTicketId) {
-          setActiveTicketId(next[0]._id)
-        }
+        localStorage.removeItem('dormdoor_demo_student_support')
+        setTickets([])
+        setActiveTicketId('')
         return
       }
 
@@ -3264,29 +3319,8 @@ function SupportPage() {
 
     try {
       if (isDemoUser) {
-        const now = new Date().toISOString()
-        const created = {
-          _id: `demo-support-${Date.now()}`,
-          subject: ticketForm.subject.trim(),
-          description: ticketForm.description.trim(),
-          priority: ticketForm.priority,
-          status: 'Open',
-          createdAt: now,
-          updatedAt: now,
-          messages: [
-            {
-              sender: { name: 'Demo Student', role: 'student' },
-              text: ticketForm.description.trim(),
-              attachments: fileToAttachment(ticketAttachment),
-              createdAt: now,
-            },
-          ],
-        }
-
-        const next = [created, ...tickets]
-        setTickets(next)
-        setActiveTicketId(created._id)
-        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+        setError('Support tickets require a real student account connected to the backend.')
+        return
       } else {
         const payload = new FormData()
         payload.append('subject', ticketForm.subject.trim())
@@ -3322,26 +3356,8 @@ function SupportPage() {
 
     try {
       if (isDemoUser) {
-        const now = new Date().toISOString()
-        const next = tickets.map((ticket) => {
-          if (ticket._id !== activeTicket._id) return ticket
-          return {
-            ...ticket,
-            updatedAt: now,
-            messages: [
-              ...(ticket.messages || []),
-              {
-                sender: { name: 'Demo Student', role: 'student' },
-                text: reply.trim(),
-                attachments: fileToAttachment(replyAttachment),
-                createdAt: now,
-              },
-            ],
-          }
-        })
-
-        setTickets(next)
-        localStorage.setItem(demoStorageKey, JSON.stringify(next))
+        setError('Support replies require a real student account connected to the backend.')
+        return
       } else {
         const payload = new FormData()
         payload.append('text', reply.trim())
@@ -3459,7 +3475,7 @@ function SupportPage() {
             {loading ? (
               <p className="mt-3 text-sm text-[#6b7280]">Loading tickets...</p>
             ) : tickets.length === 0 ? (
-              <p className="mt-3 rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No tickets available.</p>
+              <p className="mt-3 rounded-xl bg-[#f7f4f3] px-4 py-4 text-sm text-[#546067]">No support messages yet.</p>
             ) : (
               <div className="mt-4 space-y-3">
                 {tickets.map((ticket) => (

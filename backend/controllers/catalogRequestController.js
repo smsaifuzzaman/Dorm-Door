@@ -2,6 +2,7 @@ import { CatalogRequest } from '../models/CatalogRequest.js'
 import { Dorm } from '../models/Dorm.js'
 import { Notification } from '../models/Notification.js'
 import { Room } from '../models/Room.js'
+import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
 
@@ -114,7 +115,7 @@ export const createCatalogRequest = asyncHandler(async (req, res) => {
   validateRequestPayload(type, payload)
 
   if (type === 'room') {
-    const dorm = await Dorm.findById(payload.dorm)
+    const dorm = await Dorm.findOne({ _id: payload.dorm, status: 'active' })
     if (!dorm) {
       throw new ApiError(404, 'Dorm not found')
     }
@@ -144,16 +145,18 @@ export const approveCatalogRequest = asyncHandler(async (req, res) => {
   }
 
   let created
+  let promotedApplications = []
   if (request.type === 'dorm') {
     created = await Dorm.create(normalizeDormPayload(request.payload, request.requestedBy))
     request.resultModel = 'Dorm'
   } else {
     const payload = normalizeRoomPayload(request.payload)
-    const dorm = await Dorm.findById(payload.dorm)
+    const dorm = await Dorm.findOne({ _id: payload.dorm, status: 'active' })
     if (!dorm) {
       throw new ApiError(404, 'Dorm not found')
     }
     created = await Room.create(payload)
+    promotedApplications = await promoteWaitlistedApplicantsForRoom(created._id)
     request.resultModel = 'Room'
   }
 
@@ -171,7 +174,15 @@ export const approveCatalogRequest = asyncHandler(async (req, res) => {
   )
 
   const populated = await request.populate(['requestedBy', 'reviewedBy'])
-  res.json({ success: true, message: 'Catalog request approved', request: populated, record: created })
+  res.json({
+    success: true,
+    message: promotedApplications.length
+      ? `Catalog request approved. ${promotedApplications.length} waitlisted applicant promoted.`
+      : 'Catalog request approved',
+    request: populated,
+    record: created,
+    promotedApplications,
+  })
 })
 
 export const rejectCatalogRequest = asyncHandler(async (req, res) => {

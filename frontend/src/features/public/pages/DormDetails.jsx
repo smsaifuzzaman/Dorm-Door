@@ -11,6 +11,13 @@ const amenityLabelMap = {
   Laundry: 'Laundry',
 }
 
+const reviewRatingCategories = [
+  { key: 'cleanliness', label: 'Cleanliness', icon: 'cleaning_services' },
+  { key: 'security', label: 'Security', icon: 'security' },
+  { key: 'internet', label: 'Internet', icon: 'wifi' },
+  { key: 'maintenance', label: 'Maintenance', icon: 'build' },
+]
+
 function getRentValue(rent) {
   return Number(String(rent).replace(/[^\d]/g, '')) || 0
 }
@@ -60,6 +67,80 @@ function renderAmenityPill(amenity, tone) {
   )
 }
 
+function normalizeReviewRating(value) {
+  const rating = Number(value)
+  if (!Number.isFinite(rating) || rating < 1 || rating > 5) return null
+  return rating
+}
+
+function categoryRatingSummary(reviews = []) {
+  const summary = reviewRatingCategories.map((category) => {
+    const ratings = reviews
+      .map((review) => normalizeReviewRating(review.rating?.[category.key]))
+      .filter((rating) => rating !== null)
+    const average = ratings.length
+      ? Math.round((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length) * 10) / 10
+      : null
+
+    return {
+      ...category,
+      average,
+      count: ratings.length,
+    }
+  })
+
+  return {
+    categories: summary,
+    reviewCount: reviews.length,
+  }
+}
+
+function ReviewRatingPanel({ summary }) {
+  return (
+    <aside className="flex h-full flex-col rounded-xl bg-surface-container-lowest p-5 ring-1 ring-outline-variant/15">
+      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-secondary">Student Ratings</p>
+      <h2 className="mt-2 text-2xl font-black tracking-tight text-on-surface">Review Details</h2>
+      <p className="mt-1 text-sm font-medium text-secondary">
+        {summary.reviewCount
+          ? `Based on ${summary.reviewCount} submitted review${summary.reviewCount === 1 ? '' : 's'}`
+          : 'No submitted ratings yet'}
+      </p>
+
+      <div className="mt-6 space-y-5">
+        {summary.categories.map((item) => {
+          const width = item.average ? `${(item.average / 5) * 100}%` : '0%'
+
+          return (
+            <div key={item.key}>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="material-symbols-outlined text-[20px] text-primary">{item.icon}</span>
+                  <span className="truncate text-sm font-bold text-on-surface">{item.label}</span>
+                </div>
+                <span className="shrink-0 text-sm font-black text-primary">
+                  {item.average ? item.average.toFixed(1) : '-'}/5
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-surface-container-high">
+                <div className="h-full rounded-full bg-primary" style={{ width }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </aside>
+  )
+}
+
+function NoImagesAvailable({ className = '', minHeightClass = 'min-h-64' }) {
+  return (
+    <div className={`flex h-full w-full flex-col items-center justify-center gap-3 rounded-xl bg-surface-container px-6 text-center text-outline ${minHeightClass} ${className}`}>
+      <span className="material-symbols-outlined text-6xl">image</span>
+      <p className="text-base font-bold text-secondary">No images available</p>
+    </div>
+  )
+}
+
 function DormDetails() {
   const { id } = useParams()
   const [isCompareOpen, setIsCompareOpen] = useState(false)
@@ -67,9 +148,11 @@ function DormDetails() {
   const [useSimpleComparePicker, setUseSimpleComparePicker] = useState(false)
   const [dorm, setDorm] = useState(null)
   const [comparableDorms, setComparableDorms] = useState([])
+  const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const compareOptions = useMemo(() => comparableDorms.filter((item) => item.id !== id), [comparableDorms, id])
+  const reviewSummary = useMemo(() => categoryRatingSummary(reviews), [reviews])
   const comparedDorm = useMemo(
     () => compareOptions.find((item) => item.id === compareDormId) || null,
     [compareDormId, compareOptions],
@@ -82,20 +165,24 @@ function DormDetails() {
       setLoading(true)
       setError('')
       setCompareDormId('')
+      setReviews([])
 
       try {
-        const [{ data: detailData }, { data: listData }] = await Promise.all([
+        const [{ data: detailData }, { data: listData }, { data: reviewData }] = await Promise.all([
           api.get(`/dorms/${id}`),
           api.get('/dorms'),
+          api.get('/reviews', { params: { dormId: id } }).catch(() => ({ data: { reviews: [] } })),
         ])
 
         if (!mounted) return
         setDorm(toPublicDorm({ ...(detailData.dorm || {}), rooms: detailData.rooms || [] }))
         setComparableDorms(toPublicDorms(listData.dorms || []))
+        setReviews(reviewData.reviews || [])
       } catch (requestError) {
         if (mounted) {
           setDorm(null)
           setComparableDorms([])
+          setReviews([])
           setError(requestError.response?.data?.message || 'This listing is unavailable.')
         }
       } finally {
@@ -143,6 +230,7 @@ function DormDetails() {
     )
   }
 
+  const hasGalleryImages = dorm.gallery.length > 0
   const mainImage = dorm.gallery[0]
   const galleryGrid = dorm.gallery.slice(1, 4)
   const finalGalleryImage = dorm.gallery[4] || dorm.gallery[0]
@@ -181,21 +269,28 @@ function DormDetails() {
           </div>
         </header>
 
-        <section className="mb-12 grid h-auto grid-cols-1 gap-4 md:grid-cols-4 md:grid-rows-2 md:h-[500px]">
-          <div className="overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.01] md:col-span-2 md:row-span-2">
-            <img src={mainImage} alt={`${dorm.name} main view`} className="h-full w-full object-cover" />
-          </div>
-          {galleryGrid.map((image, index) => (
-            <div key={image} className="overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.02]">
-              <img src={image} alt={`Gallery ${index + 2}`} className="h-full w-full object-cover" />
+        <section className="mb-12 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          {hasGalleryImages ? (
+            <div className="grid h-auto grid-cols-1 gap-4 md:grid-cols-4 md:grid-rows-2 md:h-[500px]">
+              <div className="overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.01] md:col-span-2 md:row-span-2">
+                <img src={mainImage} alt={`${dorm.name} main view`} className="h-full w-full object-cover" />
+              </div>
+              {galleryGrid.map((image, index) => (
+                <div key={`${image}-${index}`} className="overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.02]">
+                  <img src={image} alt={`Gallery ${index + 2}`} className="h-full w-full object-cover" />
+                </div>
+              ))}
+              <div className="group relative overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.02]">
+                <img src={finalGalleryImage} alt={`${dorm.name} exterior`} className="h-full w-full object-cover" />
+                <div className="absolute inset-0 flex items-center justify-center bg-on-surface/40 opacity-0 transition group-hover:opacity-100">
+                  <span className="font-bold text-white">+12 Photos</span>
+                </div>
+              </div>
             </div>
-          ))}
-          <div className="group relative overflow-hidden rounded-xl bg-surface-container transition hover:scale-[1.02]">
-            <img src={finalGalleryImage} alt={`${dorm.name} exterior`} className="h-full w-full object-cover" />
-            <div className="absolute inset-0 flex items-center justify-center bg-on-surface/40 opacity-0 transition group-hover:opacity-100">
-              <span className="font-bold text-white">+12 Photos</span>
-            </div>
-          </div>
+          ) : (
+            <NoImagesAvailable minHeightClass="min-h-[320px] md:min-h-[500px]" />
+          )}
+          <ReviewRatingPanel summary={reviewSummary} />
         </section>
 
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-3">
@@ -292,7 +387,11 @@ function DormDetails() {
                             }`}
                           >
                             <div className="relative h-40 overflow-hidden">
-                              <img src={optionImage} alt={`${option.name} room preview`} className="h-full w-full object-cover" />
+                              {optionImage ? (
+                                <img src={optionImage} alt={`${option.name} room preview`} className="h-full w-full object-cover" />
+                              ) : (
+                                <NoImagesAvailable className="rounded-none" minHeightClass="min-h-0" />
+                              )}
                               <span className="absolute left-3 top-3 rounded-full bg-on-surface/75 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white">
                                 {option.status}
                               </span>

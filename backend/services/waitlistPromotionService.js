@@ -1,6 +1,7 @@
 import { Application } from '../models/Application.js'
 import { Notification } from '../models/Notification.js'
 import { Room } from '../models/Room.js'
+import { cancelOtherActiveApplicationsForStudent } from './applicationLifecycleService.js'
 import { sendEmail } from '../utils/email.js'
 
 function isRoomAvailable(room) {
@@ -14,6 +15,20 @@ function nextRoomStatus(room) {
   if (room.occupiedSeats >= room.seatCount) return 'Full'
   if (room.occupiedSeats > 0) return 'Limited'
   return 'Open'
+}
+
+async function releaseRoomSeat(roomId) {
+  const room = await Room.findByIdAndUpdate(
+    roomId,
+    { $inc: { occupiedSeats: -1 } },
+    { new: true },
+  )
+
+  if (!room) return null
+  room.occupiedSeats = Math.max(0, Number(room.occupiedSeats || 0))
+  room.status = nextRoomStatus(room)
+  await room.save()
+  return room
 }
 
 function matchesRoom(application, room) {
@@ -78,33 +93,64 @@ async function findWaitlistedApplicationForRoom(room, excludedIds) {
 export async function promoteWaitlistedApplicantsForRoom(roomId, options = {}) {
   const excludedIds = (options.excludeApplicationIds || []).map((id) => String(id))
   const promoted = []
-  const room = await Room.findById(roomId)
 
-  if (!isRoomAvailable(room)) {
-    return promoted
-  }
+  while (true) {
+    const room = await Room.findOne({
+      _id: roomId,
+      status: { $nin: ['Maintenance', 'Unavailable', 'Full'] },
+      $expr: { $lt: ['$occupiedSeats', '$seatCount'] },
+    })
 
-  while (isRoomAvailable(room)) {
+    if (!isRoomAvailable(room)) break
+
     const application = await findWaitlistedApplicationForRoom(room, excludedIds)
     if (!application) break
 
-    application.status = 'Approved'
-    application.room = room._id
-    application.adminNote = [
-      application.adminNote,
-      `Automatically promoted from waitlist on ${new Date().toLocaleString()}.`,
-    ]
-      .filter(Boolean)
-      .join('\n')
+    const claimedRoom = await Room.findOneAndUpdate(
+      {
+        _id: room._id,
+        status: { $nin: ['Maintenance', 'Unavailable', 'Full'] },
+        $expr: { $lt: ['$occupiedSeats', '$seatCount'] },
+      },
+      { $inc: { occupiedSeats: 1 } },
+      { new: true },
+    )
 
-    room.occupiedSeats = Math.min(room.seatCount, Number(room.occupiedSeats || 0) + 1)
-    room.status = nextRoomStatus(room)
+    if (!claimedRoom) break
 
-    await Promise.all([application.save(), room.save()])
-    await createPromotionNotification(application, room)
-    await emailPromotion(application, room)
+    claimedRoom.status = nextRoomStatus(claimedRoom)
+    await claimedRoom.save()
 
-    promoted.push(application)
+    const approvedApplication = await Application.findOneAndUpdate(
+      { _id: application._id, status: 'Waitlisted' },
+      {
+        $set: {
+          status: 'Approved',
+          room: claimedRoom._id,
+          adminNote: [
+            application.adminNote,
+            `Automatically promoted from waitlist on ${new Date().toLocaleString()}.`,
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        },
+      },
+      { new: true, runValidators: true },
+    )
+      .populate('student', 'name email studentId')
+      .populate('dorm', 'name block address')
+
+    if (!approvedApplication) {
+      await releaseRoomSeat(claimedRoom._id)
+      excludedIds.push(String(application._id))
+      continue
+    }
+
+    await cancelOtherActiveApplicationsForStudent(approvedApplication)
+    await createPromotionNotification(approvedApplication, claimedRoom)
+    await emailPromotion(approvedApplication, claimedRoom)
+
+    promoted.push(approvedApplication)
     excludedIds.push(String(application._id))
   }
 

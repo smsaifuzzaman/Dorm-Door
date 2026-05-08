@@ -7,7 +7,7 @@ import { ApiError } from '../utils/apiError.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const profileImageDir = path.resolve(__dirname, '../uploads/profile-images')
+const avatarDir = path.resolve(__dirname, '../uploads/avatars')
 const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
 function hasPngSignature(buffer) {
@@ -71,13 +71,14 @@ export const uploadProfileImage = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Only PNG profile pictures are allowed.')
   }
 
-  await fs.promises.mkdir(profileImageDir, { recursive: true })
+  await fs.promises.mkdir(avatarDir, { recursive: true })
 
-  const fileName = `profile-${req.user.id}-${Date.now()}.png`
-  const filePath = path.join(profileImageDir, fileName)
+  const fileName = `avatar-${req.user.id}-${Date.now()}.png`
+  const filePath = path.join(avatarDir, fileName)
   await fs.promises.writeFile(filePath, file.buffer)
 
-  const profileImage = `${req.protocol}://${req.get('host')}/uploads/profile-images/${fileName}`
+  const avatar = `/uploads/avatars/${fileName}`
+  const profileImage = avatar
   const user = await User.findByIdAndUpdate(req.user.id, { profileImage }, {
     new: true,
     runValidators: true,
@@ -89,7 +90,8 @@ export const uploadProfileImage = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: 'Profile picture updated',
+    message: 'Profile picture uploaded successfully',
+    avatar,
     profileImage,
     user,
   })

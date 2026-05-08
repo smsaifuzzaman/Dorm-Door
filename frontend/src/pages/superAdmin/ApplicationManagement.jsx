@@ -15,7 +15,7 @@ import {
 } from '../../services/superAdminApi'
 import { formatDate, formatDateTime, referenceId, studentNameFromApplication } from './pageUtils'
 
-const statusOptions = ['All', 'Pending', 'Under Review', 'Approved', 'Rejected', 'Waitlisted']
+const statusOptions = ['All', 'Pending', 'Under Review', 'Approved', 'Rejected', 'Waitlisted', 'Cancelled']
 
 function ApplicationManagement() {
   const [applications, setApplications] = useState([])
