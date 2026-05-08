@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import AdminLayout from '../../components/dashboard/AdminLayout'
+import { collectLocalImages } from '../../features/admin/utils/localImages'
 
 const initialForm = {
   name: '',
@@ -10,7 +11,6 @@ const initialForm = {
   description: '',
   rules: '',
   facilities: '',
-  images: '',
   totalFloors: 1,
   totalCapacity: 0,
 }
@@ -18,6 +18,7 @@ const initialForm = {
 function AdminAddDormPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
+  const [images, setImages] = useState([])
   const [message, setMessage] = useState('')
 
   const handleChange = (event) => {
@@ -25,23 +26,26 @@ function AdminAddDormPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleImageSelection = async (event) => {
+    const result = await collectLocalImages(event.target.files, { existing: images, maxFiles: 6 })
+    setImages(result.images)
+    if (result.message) setMessage(result.message)
+    event.target.value = ''
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
 
     try {
-      await api.post('/dorms', {
+      const requestBody = new FormData()
+      Object.entries({
         ...form,
         totalFloors: Number(form.totalFloors),
         totalCapacity: Number(form.totalCapacity),
-        facilities: form.facilities
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
-        images: form.images
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
-      })
+      }).forEach(([key, value]) => requestBody.append(key, value))
+      images.forEach((image) => requestBody.append('images', image.file))
+
+      await api.post('/dorms', requestBody)
 
       navigate('/admin/dorms')
     } catch (error) {
@@ -86,8 +90,9 @@ function AdminAddDormPage() {
             </label>
 
             <label>
-              Image URLs (comma separated)
-              <textarea name="images" value={form.images} onChange={handleChange} rows={3} />
+              Dorm Photos
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={handleImageSelection} />
+              <span>{images.length ? `${images.length} photo${images.length === 1 ? '' : 's'} selected` : 'Choose photos from your device'}</span>
             </label>
 
             <label>

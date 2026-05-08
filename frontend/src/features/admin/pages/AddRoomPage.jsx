@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../components/layout/AdminLayout'
 import Icon from '../components/Icon'
 import { topbarAvatars } from '../data/dashboardData'
 import { api } from '../../../api/client'
+import { collectLocalImages, MAX_LOCAL_IMAGE_LABEL } from '../utils/localImages'
 
 const amenityOptions = [
   { id: 'wifi', title: 'High-speed Wi-Fi', subtitle: 'Fiber Optic' },
@@ -43,6 +44,7 @@ function Label({ children }) {
 
 function AddRoomPage() {
   const navigate = useNavigate()
+  const fileInputRef = useRef(null)
   const [dorms, setDorms] = useState([])
   const [loadingDorms, setLoadingDorms] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -56,9 +58,7 @@ function AddRoomPage() {
   const [roomType, setRoomType] = useState('Single Room')
   const [building, setBuilding] = useState('')
   const [amenities, setAmenities] = useState(initialAmenities)
-  const [uploadedName, setUploadedName] = useState('')
-  const [uploadedImageData, setUploadedImageData] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
+  const [roomImages, setRoomImages] = useState([])
 
   useEffect(() => {
     async function loadDorms() {
@@ -96,6 +96,17 @@ function AddRoomPage() {
     setAmenities((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
+  const handleImageSelection = async (event) => {
+    const result = await collectLocalImages(event.target.files, { existing: roomImages, maxFiles: 3 })
+    setRoomImages(result.images)
+    if (result.message) setError(result.message)
+    event.target.value = ''
+  }
+
+  const removeImage = (imageId) => {
+    setRoomImages((prev) => prev.filter((image) => image.id !== imageId))
+  }
+
   const handleCreateRoom = async () => {
     setMessage('')
     setError('')
@@ -113,20 +124,22 @@ function AddRoomPage() {
     setSaving(true)
 
     try {
-      await api.post('/catalog-requests', {
-        type: 'room',
-        payload: {
-          dorm: building,
-          roomNumber: roomNumber.trim(),
-          floor: floorLevel.trim(),
-          type: roomType,
-          seatCount: Math.max(1, Number(seatCount || 1)),
-          occupiedSeats: 0,
-          priceMonthly: Math.max(0, Number(price || 0)),
-          amenities: selectedAmenities,
-          images: uploadedImageData ? [uploadedImageData] : imageUrl.trim() ? [imageUrl.trim()] : [],
-        },
-      })
+      const payload = {
+        dorm: building,
+        roomNumber: roomNumber.trim(),
+        floor: floorLevel.trim(),
+        type: roomType,
+        seatCount: Math.max(1, Number(seatCount || 1)),
+        occupiedSeats: 0,
+        priceMonthly: Math.max(0, Number(price || 0)),
+        amenities: selectedAmenities,
+      }
+      const requestBody = new FormData()
+      requestBody.append('type', 'room')
+      requestBody.append('payload', JSON.stringify(payload))
+      roomImages.forEach((image) => requestBody.append('images', image.file))
+
+      await api.post('/catalog-requests', requestBody)
 
       setMessage('Room request submitted for super admin approval. Redirecting...')
       setTimeout(() => navigate('/admin/applications'), 500)
@@ -144,9 +157,7 @@ function AddRoomPage() {
     setFloorLevel('')
     setRoomType('Single Room')
     setAmenities(initialAmenities)
-    setUploadedName('')
-    setUploadedImageData('')
-    setImageUrl('')
+    setRoomImages([])
     setMessage('')
     setError('')
   }
@@ -308,62 +319,30 @@ function AddRoomPage() {
               <label className="group flex aspect-square w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low p-6 text-center transition-all duration-300 hover:border-primary hover:bg-white">
                 <Icon name="cloud_upload" className="mb-3 text-4xl text-secondary transition-transform group-hover:scale-110 group-hover:text-primary" />
                 <p className="text-sm font-bold text-on-surface">Upload Property Photo</p>
-                <p className="mt-1 text-xs text-secondary">{uploadedName || 'PNG, JPG up to 10MB'}</p>
+                <p className="mt-1 text-xs text-secondary">{roomImages.length ? `${roomImages.length} selected` : `JPG, PNG, WebP, HEIC up to ${MAX_LOCAL_IMAGE_LABEL}`}</p>
                 <input
+                  ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  multiple
                   className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    setUploadedName(file?.name || '')
-                    setUploadedImageData('')
-                    if (!file) return
-                    if (file.size > 3 * 1024 * 1024) {
-                      setError('Room image must be 3MB or smaller.')
-                      return
-                    }
-                    const reader = new FileReader()
-                    reader.onload = () => {
-                      setUploadedImageData(String(reader.result || ''))
-                      setImageUrl('')
-                    }
-                    reader.readAsDataURL(file)
-                  }}
+                  onChange={handleImageSelection}
                 />
               </label>
 
-              <div className="mt-4">
-                <label className="text-xs font-bold uppercase tracking-wider text-secondary">Image URL (Optional)</label>
-                <input
-                  value={imageUrl}
-                  onChange={(event) => {
-                    setImageUrl(event.target.value)
-                    if (event.target.value.trim()) {
-                      setUploadedImageData('')
-                      setUploadedName('')
-                    }
-                  }}
-                  placeholder="https://example.com/room.jpg"
-                  className="mt-2 w-full rounded-lg border-none bg-surface-container-high px-4 py-3 text-sm focus:ring-2 focus:ring-primary"
-                />
-              </div>
-
               <div className="mt-4 grid grid-cols-3 gap-2">
-                {(uploadedImageData || imageUrl.trim()) ? (
-                  <div className="aspect-square overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-high">
-                    <img src={uploadedImageData || imageUrl.trim()} alt="Room preview" className="h-full w-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-high text-secondary">
-                    <Icon name="image" />
-                  </div>
-                )}
-                <div className="flex aspect-square items-center justify-center rounded-lg bg-surface-container-high">
-                  <Icon name="add" className="text-secondary text-sm" />
-                </div>
-                <div className="flex aspect-square items-center justify-center rounded-lg bg-surface-container-high">
-                  <Icon name="add" className="text-secondary text-sm" />
-                </div>
+                {[0, 1, 2].map((slot) => (
+                  roomImages[slot] ? (
+                    <button key={roomImages[slot].id} type="button" onClick={() => removeImage(roomImages[slot].id)} className="group relative aspect-square overflow-hidden rounded-lg border border-outline-variant/20 bg-surface-container-high">
+                      <img src={roomImages[slot].preview} alt={`Room preview ${slot + 1}`} className="h-full w-full object-cover" />
+                      <span className="absolute inset-0 hidden items-center justify-center bg-black/45 text-[10px] font-bold text-white group-hover:flex">Remove</span>
+                    </button>
+                  ) : (
+                    <button key={slot} type="button" onClick={() => fileInputRef.current?.click()} className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-high text-secondary">
+                      <Icon name={slot === 0 ? 'image' : 'add'} className="text-sm" />
+                    </button>
+                  )
+                ))}
               </div>
             </FormSection>
 

@@ -28,6 +28,8 @@ const PAGE_TO_PATH = {
 }
 
 const REQUIRED_DOCUMENT_CATEGORIES = ['Student ID', 'Passport Photo', 'Admission Certificate']
+const MAX_RECEIPT_FILE_BYTES = 10 * 1024 * 1024
+const RECEIPT_FILE_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf'
 
 function pathToPage(pathname) {
   const entry = Object.entries(PAGE_TO_PATH).find(([, path]) => path === pathname)
@@ -819,7 +821,7 @@ function RoomApplicationsPage() {
     amount: '',
     paymentMethod: 'bKash',
     transactionId: '',
-    receiptUrl: '',
+    receiptFile: null,
   })
   const [paymentSaving, setPaymentSaving] = useState(false)
   const [paymentMessage, setPaymentMessage] = useState('')
@@ -961,7 +963,7 @@ function RoomApplicationsPage() {
       amount: application.room?.priceMonthly || '',
       paymentMethod: 'bKash',
       transactionId: '',
-      receiptUrl: '',
+      receiptFile: null,
     })
   }
 
@@ -971,13 +973,31 @@ function RoomApplicationsPage() {
       amount: '',
       paymentMethod: 'bKash',
       transactionId: '',
-      receiptUrl: '',
+      receiptFile: null,
     })
   }
 
   const handlePaymentFormChange = (event) => {
     const { name, value } = event.target
     setPaymentForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handlePaymentReceiptChange = (event) => {
+    const file = event.target.files?.[0] || null
+    if (!file) {
+      setPaymentForm((prev) => ({ ...prev, receiptFile: null }))
+      return
+    }
+
+    if (file.size > MAX_RECEIPT_FILE_BYTES) {
+      setPaymentMessage('Receipt file must be 10MB or smaller.')
+      setPaymentForm((prev) => ({ ...prev, receiptFile: null }))
+      event.target.value = ''
+      return
+    }
+
+    setPaymentMessage('')
+    setPaymentForm((prev) => ({ ...prev, receiptFile: file }))
   }
 
   const handlePaymentSubmit = async (event) => {
@@ -992,13 +1012,14 @@ function RoomApplicationsPage() {
         throw new Error('Payment submission needs a real student account connected to the backend.')
       }
 
-      const { data } = await api.post('/transactions', {
-        application: paymentApplication._id,
-        amount: Number(paymentForm.amount || 0),
-        paymentMethod: paymentForm.paymentMethod,
-        transactionId: paymentForm.transactionId,
-        receiptUrl: paymentForm.receiptUrl,
-      })
+      const requestBody = new FormData()
+      requestBody.append('application', paymentApplication._id)
+      requestBody.append('amount', Number(paymentForm.amount || 0))
+      requestBody.append('paymentMethod', paymentForm.paymentMethod)
+      requestBody.append('transactionId', paymentForm.transactionId)
+      if (paymentForm.receiptFile) requestBody.append('file', paymentForm.receiptFile)
+
+      const { data } = await api.post('/transactions', requestBody)
 
       setTransactions((prev) => [data.transaction, ...prev])
       setApplications((prev) =>
@@ -1273,14 +1294,16 @@ function RoomApplicationsPage() {
               </label>
 
               <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-secondary sm:col-span-2">
-                Receipt URL
+                Receipt File
                 <input
-                  name="receiptUrl"
-                  value={paymentForm.receiptUrl}
-                  onChange={handlePaymentFormChange}
-                  placeholder="Optional screenshot or receipt link"
-                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                  type="file"
+                  accept={RECEIPT_FILE_ACCEPT}
+                  onChange={handlePaymentReceiptChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-[#0c56d0] file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
                 />
+                <span className="mt-2 block text-xs normal-case tracking-normal text-[#7b818c]">
+                  {paymentForm.receiptFile ? paymentForm.receiptFile.name : 'Optional screenshot or PDF from your device'}
+                </span>
               </label>
             </div>
 
@@ -1312,7 +1335,7 @@ function PaymentsPage() {
     amount: '',
     paymentMethod: 'bKash',
     transactionId: '',
-    receiptUrl: '',
+    receiptFile: null,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -1420,6 +1443,24 @@ function PaymentsPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleReceiptFileChange = (event) => {
+    const file = event.target.files?.[0] || null
+    if (!file) {
+      setForm((prev) => ({ ...prev, receiptFile: null }))
+      return
+    }
+
+    if (file.size > MAX_RECEIPT_FILE_BYTES) {
+      setError('Receipt file must be 10MB or smaller.')
+      setForm((prev) => ({ ...prev, receiptFile: null }))
+      event.target.value = ''
+      return
+    }
+
+    setError('')
+    setForm((prev) => ({ ...prev, receiptFile: file }))
+  }
+
   const handleApplicationChange = (event) => {
     const applicationId = event.target.value
     const nextApplication = applications.find((item) => item._id === applicationId)
@@ -1428,7 +1469,7 @@ function PaymentsPage() {
       ...prev,
       amount: nextApplication?.room?.priceMonthly || '',
       transactionId: '',
-      receiptUrl: '',
+      receiptFile: null,
     }))
     setMessage('')
   }
@@ -1446,20 +1487,21 @@ function PaymentsPage() {
     setError('')
 
     try {
-      const { data } = await api.post('/transactions', {
-        application: selectedApplication._id,
-        amount: Number(form.amount || 0),
-        paymentMethod: form.paymentMethod,
-        transactionId: form.transactionId.trim(),
-        receiptUrl: form.receiptUrl.trim(),
-      })
+      const requestBody = new FormData()
+      requestBody.append('application', selectedApplication._id)
+      requestBody.append('amount', Number(form.amount || 0))
+      requestBody.append('paymentMethod', form.paymentMethod)
+      requestBody.append('transactionId', form.transactionId.trim())
+      if (form.receiptFile) requestBody.append('file', form.receiptFile)
+
+      const { data } = await api.post('/transactions', requestBody)
 
       setTransactions((prev) => [data.transaction, ...prev])
       setApplications((prev) =>
         prev.map((item) => (item._id === selectedApplication._id ? { ...item, paymentStatus: 'Pending' } : item)),
       )
 
-      setForm((prev) => ({ ...prev, transactionId: '', receiptUrl: '' }))
+      setForm((prev) => ({ ...prev, transactionId: '', receiptFile: null }))
       setMessage('Payment submitted successfully. Current status: Pending with super admin.')
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Failed to submit payment')
@@ -1576,14 +1618,16 @@ function PaymentsPage() {
               </label>
 
               <label className="block text-[11px] font-bold uppercase tracking-[0.16em] text-secondary">
-                Receipt URL
+                Receipt File
                 <input
-                  name="receiptUrl"
-                  value={form.receiptUrl}
-                  onChange={handleChange}
-                  placeholder="Optional screenshot or receipt link"
-                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm"
+                  type="file"
+                  accept={RECEIPT_FILE_ACCEPT}
+                  onChange={handleReceiptFileChange}
+                  className="mt-2 w-full rounded-xl border-none bg-[#f1ecea] px-4 py-3 text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-[#0c56d0] file:px-3 file:py-2 file:text-xs file:font-bold file:text-white"
                 />
+                <span className="mt-2 block text-xs normal-case tracking-normal text-[#7b818c]">
+                  {form.receiptFile ? form.receiptFile.name : 'Optional screenshot or PDF from your device'}
+                </span>
               </label>
 
               <button

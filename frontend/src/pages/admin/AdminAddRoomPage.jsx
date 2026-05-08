@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import AdminLayout from '../../components/dashboard/AdminLayout'
+import { collectLocalImages } from '../../features/admin/utils/localImages'
 
 const initialForm = {
   dorm: '',
@@ -12,7 +13,6 @@ const initialForm = {
   occupiedSeats: 0,
   priceMonthly: 0,
   amenities: '',
-  images: '',
   status: 'Open',
 }
 
@@ -20,6 +20,7 @@ function AdminAddRoomPage() {
   const navigate = useNavigate()
   const [dorms, setDorms] = useState([])
   const [form, setForm] = useState(initialForm)
+  const [images, setImages] = useState([])
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -31,11 +32,19 @@ function AdminAddRoomPage() {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handleImageSelection = async (event) => {
+    const result = await collectLocalImages(event.target.files, { existing: images, maxFiles: 3 })
+    setImages(result.images)
+    if (result.message) setMessage(result.message)
+    event.target.value = ''
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
 
     try {
-      await api.post('/rooms', {
+      const requestBody = new FormData()
+      Object.entries({
         ...form,
         seatCount: Number(form.seatCount),
         occupiedSeats: Number(form.occupiedSeats),
@@ -44,11 +53,16 @@ function AdminAddRoomPage() {
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean),
-        images: form.images
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
+      }).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          requestBody.append(key, value.join(','))
+          return
+        }
+        requestBody.append(key, value)
       })
+      images.forEach((image) => requestBody.append('images', image.file))
+
+      await api.post('/rooms', requestBody)
 
       navigate('/admin/availability')
     } catch (error) {
@@ -124,8 +138,9 @@ function AdminAddRoomPage() {
             </label>
 
             <label>
-              Image URLs (comma separated)
-              <textarea name="images" value={form.images} onChange={handleChange} rows={3} />
+              Room Photos
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={handleImageSelection} />
+              <span>{images.length ? `${images.length} photo${images.length === 1 ? '' : 's'} selected` : 'Choose photos from your device'}</span>
             </label>
           </div>
 

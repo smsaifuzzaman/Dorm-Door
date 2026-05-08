@@ -4,6 +4,7 @@ import AdminLayout from '../components/layout/AdminLayout'
 import Icon from '../components/Icon'
 import { topbarAvatars } from '../data/dashboardData'
 import { api } from '../../../api/client'
+import { resolveBackendAssetUrl } from '../../../utils/url'
 
 const STATUS_OPTIONS = ['All', 'Open', 'Limited', 'Full', 'Maintenance']
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=300&q=80'
@@ -68,7 +69,7 @@ function AvailabilityPage() {
         available,
         status: room.status || 'Open',
         statusClass: statusClass(room.status || 'Open'),
-        image: room.images?.[0] || PLACEHOLDER_IMAGE,
+        image: resolveBackendAssetUrl(room.images?.[0]) || PLACEHOLDER_IMAGE,
       }
     })
   }, [rooms])

@@ -4,11 +4,20 @@ import { ApiError } from '../utils/apiError.js'
 
 const MAX_DOCUMENT_FILE_SIZE = 10 * 1024 * 1024
 const MAX_PROFILE_IMAGE_FILE_SIZE = 3 * 1024 * 1024
+const MAX_CATALOG_IMAGE_FILE_SIZE = 10 * 1024 * 1024
 
 const allowedMimeTypes = new Set([
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+])
+
+const allowedCatalogImageMimeTypes = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -54,6 +63,24 @@ const profileImageUpload = multer({
   },
 })
 
+const catalogImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_CATALOG_IMAGE_FILE_SIZE,
+    files: 6,
+  },
+  fileFilter(req, file, callback) {
+    const mimeType = String(file?.mimetype || '').toLowerCase()
+
+    if (!allowedCatalogImageMimeTypes.has(mimeType)) {
+      callback(new ApiError(400, 'Upload dorm or room photos as JPG, PNG, WebP, HEIC, or HEIF files.'))
+      return
+    }
+
+    callback(null, true)
+  },
+})
+
 export function uploadDocumentFile(req, res, next) {
   upload.single('file')(req, res, (error) => {
     if (!error) {
@@ -68,6 +95,32 @@ export function uploadDocumentFile(req, res, next) {
       }
 
       next(new ApiError(400, error.message || 'File upload failed'))
+      return
+    }
+
+    next(error)
+  })
+}
+
+export function uploadCatalogImages(req, res, next) {
+  catalogImageUpload.array('images', 6)(req, res, (error) => {
+    if (!error) {
+      next()
+      return
+    }
+
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        next(new ApiError(400, 'Each dorm or room photo must be 10MB or smaller.'))
+        return
+      }
+
+      if (error.code === 'LIMIT_FILE_COUNT') {
+        next(new ApiError(400, 'Upload up to 6 photos at a time.'))
+        return
+      }
+
+      next(new ApiError(400, error.message || 'Photo upload failed'))
       return
     }
 

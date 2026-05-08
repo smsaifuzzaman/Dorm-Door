@@ -4,6 +4,7 @@ import { Room } from '../models/Room.js'
 import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
+import { saveUploadedFiles } from '../utils/fileStorage.js'
 
 const VISIBLE_DORM_STATUS_FILTER = { $nin: ['inactive', 'Inactive'] }
 
@@ -81,12 +82,14 @@ export const createRoom = asyncHandler(async (req, res) => {
     Math.min(Number(occupiedSeats) || 0, normalizedSeatCount),
   )
   const finalStatus = deriveStatus(normalizedSeatCount, normalizedOccupiedSeats, status)
+  const uploadedImages = await saveUploadedFiles(req.files, 'catalog', 'room')
 
   const request = await CatalogRequest.create({
     requestedBy: req.user.id,
     type: 'room',
     payload: {
       ...req.body,
+      images: uploadedImages.filter(Boolean),
       seatCount: normalizedSeatCount,
       occupiedSeats: normalizedOccupiedSeats,
       status: finalStatus,

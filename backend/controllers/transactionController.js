@@ -5,6 +5,7 @@ import { Transaction } from '../models/Transaction.js'
 import { User } from '../models/User.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
+import { saveUploadedFile } from '../utils/fileStorage.js'
 
 function normalizeText(value) {
   return String(value || '').trim()
@@ -84,7 +85,6 @@ export const createTransaction = asyncHandler(async (req, res) => {
   const amount = Number(req.body?.amount)
   const paymentMethod = normalizeText(req.body?.paymentMethod)
   const transactionId = normalizeText(req.body?.transactionId)
-  const receiptUrl = normalizeText(req.body?.receiptUrl)
 
   if (!applicationId || !paymentMethod || !transactionId || Number.isNaN(amount) || amount <= 0) {
     throw new ApiError(400, 'application, amount, paymentMethod and transactionId are required')
@@ -112,6 +112,10 @@ export const createTransaction = asyncHandler(async (req, res) => {
   if (duplicateTransaction) {
     throw new ApiError(409, 'Transaction ID already exists')
   }
+
+  const receiptUrl = req.file
+    ? await saveUploadedFile(req.file, 'receipts', `receipt-${req.user.id}`)
+    : ''
 
   const transaction = await Transaction.create({
     student: application.student,

@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
 import Icon from '../components/Icon'
 import { api } from '../../../api/client'
+import { collectLocalImages, MAX_LOCAL_IMAGE_LABEL } from '../utils/localImages'
 
 const facilitiesList = ['High-speed Wi-Fi', 'Air Conditioning', '24/7 Security', 'Laundry Service', 'Cafeteria / Dining', 'Study & Fitness Center']
 
 function AddDormPage() {
   const navigate = useNavigate()
+  const fileInputRef = useRef(null)
   const [selected, setSelected] = useState(['High-speed Wi-Fi', '24/7 Security'])
   const [images, setImages] = useState([])
   const [form, setForm] = useState({
@@ -33,12 +35,15 @@ function AddDormPage() {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const addImageUrl = () => {
-    const nextUrl = window.prompt('Paste image URL for this dorm')
-    if (!nextUrl) return
-    const trimmed = nextUrl.trim()
-    if (!trimmed) return
-    setImages((prev) => [...prev, trimmed].slice(0, 6))
+  const handleImageSelection = async (event) => {
+    const result = await collectLocalImages(event.target.files, { existing: images, maxFiles: 6 })
+    setImages(result.images)
+    if (result.message) setError(result.message)
+    event.target.value = ''
+  }
+
+  const removeImage = (imageId) => {
+    setImages((prev) => prev.filter((image) => image.id !== imageId))
   }
 
   const handleSave = async () => {
@@ -53,22 +58,24 @@ function AddDormPage() {
     setSaving(true)
 
     try {
-      await api.post('/catalog-requests', {
-        type: 'dorm',
-        payload: {
-          name: form.name.trim(),
-          block: form.block.trim(),
-          address: form.address.trim(),
-          description: form.description.trim(),
-          rules: form.rules.trim(),
-          priceRange: form.priceRange.trim(),
-          facilities: selected,
-          images,
-          totalFloors: Number(form.totalFloors || 1),
-          totalCapacity: Number(form.totalCapacity || 0),
-          status: 'active',
-        },
-      })
+      const payload = {
+        name: form.name.trim(),
+        block: form.block.trim(),
+        address: form.address.trim(),
+        description: form.description.trim(),
+        rules: form.rules.trim(),
+        priceRange: form.priceRange.trim(),
+        facilities: selected,
+        totalFloors: Number(form.totalFloors || 1),
+        totalCapacity: Number(form.totalCapacity || 0),
+        status: 'active',
+      }
+      const requestBody = new FormData()
+      requestBody.append('type', 'dorm')
+      requestBody.append('payload', JSON.stringify(payload))
+      images.forEach((image) => requestBody.append('images', image.file))
+
+      await api.post('/catalog-requests', requestBody)
       setMessage('Dorm request submitted for super admin approval. Redirecting...')
       setTimeout(() => navigate('/admin/applications'), 500)
     } catch (requestError) {
@@ -134,17 +141,28 @@ function AddDormPage() {
           <div className="space-y-8 xl:col-span-4">
             <section className="rounded-2xl border border-[#ece7e4] bg-white p-8">
               <h3 className="mb-6 flex items-center gap-3 text-2xl font-extrabold"><span className="rounded-full bg-blue-50 p-3 text-primary"><Icon name="photo_camera" /></span> Dorm Photos</h3>
-              <button type="button" onClick={addImageUrl} className="flex min-h-[240px] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#d8d2cf] text-center">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                multiple
+                className="hidden"
+                onChange={handleImageSelection}
+              />
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="flex min-h-[240px] w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#d8d2cf] text-center">
                 <Icon name="add_a_photo" className="text-5xl text-secondary" />
-                <p className="mt-4 text-xl font-semibold">Click to add photo URL</p>
-                <p className="mt-2 max-w-[220px] text-sm text-secondary">Store image links to keep dorm gallery visible.</p>
+                <p className="mt-4 text-xl font-semibold">Choose photos from device</p>
+                <p className="mt-2 max-w-[240px] text-sm text-secondary">Upload JPG, PNG, WebP, HEIC, or HEIF files up to {MAX_LOCAL_IMAGE_LABEL} each.</p>
               </button>
               <div className="mt-5 grid grid-cols-3 gap-4">
-                {[0, 1, 2].map((slot) => (
+                {[0, 1, 2, 3, 4, 5].map((slot) => (
                   images[slot] ? (
-                    <img key={slot} src={images[slot]} alt={`Dorm preview ${slot + 1}`} className="h-20 w-full rounded-xl object-cover" />
+                    <button key={images[slot].id} type="button" onClick={() => removeImage(images[slot].id)} className="group relative h-20 overflow-hidden rounded-xl">
+                      <img src={images[slot].preview} alt={`Dorm preview ${slot + 1}`} className="h-full w-full object-cover" />
+                      <span className="absolute inset-0 hidden items-center justify-center bg-black/45 text-xs font-bold text-white group-hover:flex">Remove</span>
+                    </button>
                   ) : (
-                    <button key={slot} type="button" onClick={addImageUrl} className="flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-[#d8d2cf] text-3xl text-secondary">+</button>
+                    <button key={slot} type="button" onClick={() => fileInputRef.current?.click()} className="flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-[#d8d2cf] text-3xl text-secondary">+</button>
                   )
                 ))}
               </div>

@@ -10,6 +10,7 @@ import {
   rejectTransaction,
 } from '../../services/superAdminApi'
 import { formatDate, formatDateTime, money, referenceId } from './pageUtils'
+import { toSafeExternalUrl } from '../../utils/url'
 
 function TransactionManagement() {
   const [transactions, setTransactions] = useState([])
@@ -149,10 +150,10 @@ function TransactionManagement() {
             <p><strong>Transaction ID:</strong> {selectedTransaction.transactionId}</p>
             <p><strong>Submitted:</strong> {formatDateTime(selectedTransaction.createdAt)}</p>
             <p><strong>Status:</strong> {selectedTransaction.status}</p>
-            {selectedTransaction.receiptUrl ? (
+            {toSafeExternalUrl(selectedTransaction.receiptUrl) ? (
               <p className="sm:col-span-2">
                 <strong>Receipt:</strong>{' '}
-                <a href={selectedTransaction.receiptUrl} target="_blank" rel="noreferrer" className="font-bold text-primary underline">
+                <a href={toSafeExternalUrl(selectedTransaction.receiptUrl)} target="_blank" rel="noreferrer" className="font-bold text-primary underline">
                   Open receipt
                 </a>
               </p>

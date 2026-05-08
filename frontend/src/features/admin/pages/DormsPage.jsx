@@ -23,6 +23,7 @@ import {
 import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
 import { api } from '../../../api/client'
+import { resolveBackendAssetUrl } from '../../../utils/url'
 
 const PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=300&q=80'
 
@@ -120,7 +121,7 @@ function DormsPage() {
   const roomRows = useMemo(() => {
     return rooms.map((room) => ({
       id: room._id,
-      image: room.images?.[0] || PLACEHOLDER_IMAGE,
+      image: resolveBackendAssetUrl(room.images?.[0]) || PLACEHOLDER_IMAGE,
       dorm: room.dorm?.name || 'Dorm not assigned',
       block: room.dorm?.block || 'Block N/A',
       floor: room.floor || 'Floor N/A',

@@ -5,6 +5,7 @@ import { Room } from '../models/Room.js'
 import { promoteWaitlistedApplicantsForRoom } from '../services/waitlistPromotionService.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
+import { saveUploadedFiles } from '../utils/fileStorage.js'
 
 function normalizeText(value) {
   return String(value || '').trim()
@@ -19,6 +20,23 @@ function normalizeList(value) {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function parseObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+
+  return {}
 }
 
 function normalizeDormPayload(payload = {}, requestedBy) {
@@ -108,9 +126,10 @@ export const listCatalogRequests = asyncHandler(async (req, res) => {
 
 export const createCatalogRequest = asyncHandler(async (req, res) => {
   const type = normalizeText(req.body?.type).toLowerCase()
+  const requestPayload = parseObject(req.body?.payload)
   const payload = type === 'dorm'
-    ? normalizeDormPayload(req.body?.payload, req.user.id)
-    : normalizeRoomPayload(req.body?.payload)
+    ? normalizeDormPayload(requestPayload, req.user.id)
+    : normalizeRoomPayload(requestPayload)
 
   validateRequestPayload(type, payload)
 
@@ -120,6 +139,9 @@ export const createCatalogRequest = asyncHandler(async (req, res) => {
       throw new ApiError(404, 'Dorm not found')
     }
   }
+
+  const uploadedImages = await saveUploadedFiles(req.files, 'catalog', type || 'catalog')
+  payload.images = uploadedImages.filter(Boolean)
 
   const request = await CatalogRequest.create({
     requestedBy: req.user.id,

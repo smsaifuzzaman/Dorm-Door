@@ -4,6 +4,7 @@ import { Review } from '../models/Review.js'
 import { Room } from '../models/Room.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { ApiError } from '../utils/apiError.js'
+import { saveUploadedFiles } from '../utils/fileStorage.js'
 
 const PUBLIC_DORM_STATUS_FILTER = { $nin: ['inactive', 'Inactive'] }
 
@@ -139,12 +140,16 @@ export const getDormById = asyncHandler(async (req, res) => {
 export const createDorm = asyncHandler(async (req, res) => {
   const payload = {
     ...req.body,
+    images: [],
     status: req.body?.status || 'active',
   }
 
   if (!payload.name || !payload.address) {
     throw new ApiError(400, 'Dorm name and address are required')
   }
+
+  const uploadedImages = await saveUploadedFiles(req.files, 'catalog', 'dorm')
+  payload.images = uploadedImages.filter(Boolean)
 
   const request = await CatalogRequest.create({
     requestedBy: req.user.id,

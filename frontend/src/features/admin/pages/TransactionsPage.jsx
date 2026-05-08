@@ -3,6 +3,7 @@ import { Eye, ReceiptText, RefreshCw } from 'lucide-react'
 import AdminLayout from '../components/layout/AdminLayout'
 import { topbarAvatars } from '../data/dashboardData'
 import { api } from '../../../api/client'
+import { toSafeExternalUrl } from '../../../utils/url'
 
 function formatDateTime(value) {
   if (!value) return 'N/A'
@@ -209,10 +210,10 @@ function TransactionsPage() {
               <p><span className="font-bold">Status:</span> {selectedTransaction.status || 'Pending'}</p>
               <p><span className="font-bold">Submitted:</span> {formatDateTime(selectedTransaction.createdAt)}</p>
               <p><span className="font-bold">Approved By:</span> {selectedTransaction.approvedBy?.name || 'Not approved yet'}</p>
-              {selectedTransaction.receiptUrl ? (
+              {toSafeExternalUrl(selectedTransaction.receiptUrl) ? (
                 <p className="sm:col-span-2">
                   <span className="font-bold">Receipt:</span>{' '}
-                  <a href={selectedTransaction.receiptUrl} target="_blank" rel="noreferrer" className="font-bold text-primary underline">
+                  <a href={toSafeExternalUrl(selectedTransaction.receiptUrl)} target="_blank" rel="noreferrer" className="font-bold text-primary underline">
                     Open receipt
                   </a>
                 </p>
